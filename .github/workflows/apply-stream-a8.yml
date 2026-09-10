@@ -1,0 +1,64 @@
+name: apply-stream-a8
+on:
+  push:
+    branches: [stream-a8]
+    paths: ['stream-a8.apply']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: stream-a8
+      - name: Apply native token streaming
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def edit(path, old, new):
+              p=Path(path); s=p.read_text();
+              if old not in s: raise SystemExit(f'missing pattern in {path}: {old[:80]!r}')
+              p.write_text(s.replace(old,new,1))
+
+          edit('include/nedo/model.hpp', '#include <vector>\n', '#include <vector>\n#include <functional>\n')
+          edit('include/nedo/model.hpp',
+               'std::vector<uint32_t> generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc={});',
+               'std::vector<uint32_t> generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc={},const std::function<void(uint32_t)>& on_token={});')
+
+          edit('src/model.cpp',
+               'std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc){',
+               'std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc,const std::function<void(uint32_t)>& on_token){')
+          edit('src/model.cpp',
+               '        generated.push_back(next);\n        forward(next,pos++);',
+               '        generated.push_back(next);\n        if(on_token) on_token(next);\n        forward(next,pos++);')
+
+          edit('src/pybind.cpp', '#include <pybind11/stl/filesystem.h>\n', '#include <pybind11/stl/filesystem.h>\n#include <pybind11/functional.h>\n')
+          p=Path('src/pybind.cpp'); s=p.read_text()
+          old='.def("generate_ids",&nedo::NedoModel::generate_ids,py::arg("prompt_ids"),py::arg("config")=nedo::GenerationConfig{}).def("generate",&nedo::NedoModel::generate,py::arg("prompt"),py::arg("config")=nedo::GenerationConfig{});'
+          new='.def("generate_ids",[](nedo::NedoModel& self,const std::vector<uint32_t>& ids,const nedo::GenerationConfig& cfg){ return self.generate_ids(ids,cfg); },py::arg("prompt_ids"),py::arg("config")=nedo::GenerationConfig{}).def("generate_ids_stream",[](nedo::NedoModel& self,const std::vector<uint32_t>& ids,const nedo::GenerationConfig& cfg,py::function callback){ return self.generate_ids(ids,cfg,[callback](uint32_t id){ callback(id); }); },py::arg("prompt_ids"),py::arg("config"),py::arg("callback")).def("generate",&nedo::NedoModel::generate,py::arg("prompt"),py::arg("config")=nedo::GenerationConfig{});'
+          if old not in s: raise SystemExit('pybind generate binding pattern missing')
+          p.write_text(s.replace(old,new,1))
+
+          edit('python/nedo/cpp.py', 'from __future__ import annotations\n', 'from __future__ import annotations\nimport codecs\n')
+          p=Path('python/nedo/cpp.py'); s=p.read_text()
+          old='''    def generate(self, prompt: str, config=None) -> str:\n        if config is None:\n            config = GenerationConfig()\n        prompt_ids = self.tokenize(prompt, add_bos=False)\n        generated = self.generate_ids(prompt_ids, config)\n        return self.detokenize(generated)\n\n'''
+          new='''    def generate(self, prompt: str, config=None) -> str:\n        if config is None:\n            config = GenerationConfig()\n        prompt_ids = self.tokenize(prompt, add_bos=False)\n        generated = self.generate_ids(prompt_ids, config)\n        return self.detokenize(generated)\n\n    def generate_stream(self, prompt: str, config=None, on_text=None) -> str:\n        \"\"\"Generate once while delivering decoded UTF-8 text as soon as tokens arrive.\n\n        ``on_text`` receives plain text chunks. The returned value is the complete\n        generated text, preserving the non-streaming ``generate`` API.\n        \"\"\"\n        if config is None:\n            config = GenerationConfig()\n        prompt_ids = self.tokenize(prompt, add_bos=False)\n        decoder = codecs.getincrementaldecoder(\"utf-8\")(errors=\"replace\")\n        chunks: list[str] = []\n\n        def on_token(token_id: int) -> None:\n            raw = bytes(self._tokenizer.decode_ids([int(token_id)]))\n            text = decoder.decode(raw, final=False)\n            if text:\n                chunks.append(text)\n                if on_text is not None:\n                    on_text(text)\n\n        self._native.generate_ids_stream(prompt_ids, config, on_token)\n        tail = decoder.decode(b\"\", final=True)\n        if tail:\n            chunks.append(tail)\n            if on_text is not None:\n                on_text(tail)\n        return \"\".join(chunks)\n\n'''
+          if old not in s: raise SystemExit('cpp.py generate block missing')
+          p.write_text(s.replace(old,new,1))
+
+          p=Path('python/nedo/cli.py'); s=p.read_text()
+          old='''        try:\n            text = model.generate(prompt, cfg)\n        except RuntimeError as exc:\n            print(f\"nedo.cpp generation hatası: {exc}\", file=sys.stderr)\n            return 2\n        sys.stdout.write(text)\n        if not text.endswith(\"\\n\"):\n            sys.stdout.write(\"\\n\")\n        sys.stdout.flush()\n        history.append((user_text, text))\n'''
+          new='''        try:\n            def emit(chunk: str) -> None:\n                sys.stdout.write(chunk)\n                sys.stdout.flush()\n            text = model.generate_stream(prompt, cfg, on_text=emit)\n        except RuntimeError as exc:\n            print(f\"nedo.cpp generation hatası: {exc}\", file=sys.stderr)\n            return 2\n        if not text.endswith(\"\\n\"):\n            sys.stdout.write(\"\\n\")\n        sys.stdout.flush()\n        history.append((user_text, text))\n'''
+          if old not in s: raise SystemExit('cli generation block missing')
+          p.write_text(s.replace(old,new,1))
+
+          edit('pyproject.toml', 'version = "0.1.0a7"', 'version = "0.1.0a8"')
+          PY
+          git config user.name 'NMSOfficial'
+          git config user.email '154451479+NMSOfficial@users.noreply.github.com'
+          git add include/nedo/model.hpp src/model.cpp src/pybind.cpp python/nedo/cpp.py python/nedo/cli.py pyproject.toml
+          git commit -m 'Stream generated text token-by-token'
+          git push origin HEAD:stream-a8
