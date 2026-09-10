@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {ref: rope-half-probe}
-      - name: Patch half-split RoPE and raw-sa smoke
+      - name: Patch half-split RoPE
         shell: bash
         run: |
           python - <<'PY'
@@ -21,14 +21,9 @@ jobs:
           new='''void rope(float*q,float*k,uint32_t nq,uint32_t nkv,uint32_t hd,uint64_t pos,float theta) noexcept{\n    auto rot=[&](float*p,uint32_t nh){\n        const uint32_t half=hd/2;\n        for(uint32_t h=0;h<nh;++h){\n            float* v=p+h*hd;\n            for(uint32_t i=0;i<half;++i){\n                const float freq=std::pow(theta,-2.0f*float(i)/float(hd));\n                const float a=float(pos)*freq,c=std::cos(a),s=std::sin(a);\n                const float x=v[i],y=v[i+half];\n                v[i]=x*c-y*s;\n                v[i+half]=x*s+y*c;\n            }\n        }\n    };\n    rot(q,nq); rot(k,nkv);\n}\n'''
           if old not in s: raise SystemExit('rope pattern missing')
           p.write_text(s.replace(old,new,1))
-          w=Path('.github/workflows/stream-smoke-a8.yml'); t=w.read_text()
-          t=t.replace("prompt='Kullanıcı talimatı:\\nAşağıdaki kullanıcı mesajına doğrudan ve doğal Türkçe yanıt ver:\\nsa\\n\\nAsistan cevabı:\\n'", "prompt='Kullanıcı talimatı:\\nsa\\n\\nAsistan cevabı:\\n'")
-          t=t.replace('c.max_new_tokens=24; c.temperature=0.0; c.seed=1', 'c.max_new_tokens=16; c.temperature=0.0; c.seed=1')
-          t=t.replace("raise SystemExit('chat wrapper generated only whitespace')", "raise SystemExit('raw sa generated only whitespace')")
-          w.write_text(t)
           PY
           git config user.name 'NMSOfficial'
           git config user.email '154451479+NMSOfficial@users.noreply.github.com'
-          git add src/kernels.cpp .github/workflows/stream-smoke-a8.yml
+          git add src/kernels.cpp
           git commit -m 'Probe Llama-style half-split RoPE'
           git push origin HEAD:rope-half-probe
