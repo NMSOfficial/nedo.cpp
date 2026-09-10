@@ -2,7 +2,14 @@ name: smoke-generation-a6
 on:
   push:
     branches: [generation-a6]
-    paths: ['.github/workflows/smoke-a6.yml']
+    paths:
+      - 'src/model.cpp'
+      - 'src/tokenizer.cpp'
+      - 'src/kernels.cpp'
+      - 'include/nedo/model.hpp'
+      - 'include/nedo/tokenizer.hpp'
+      - 'include/nedo/kernels.hpp'
+      - '.github/workflows/smoke-a6.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,7 +32,7 @@ jobs:
           ctest --test-dir build --output-on-failure
           python -m pip install . pytest
           PYTHONPATH=python python -m pytest -q
-      - name: F16 checkpoint raw-byte smoke
+      - name: F16 checkpoint generation smoke
         shell: bash
         env:
           OMP_NUM_THREADS: '4'
@@ -39,6 +46,7 @@ jobs:
           #include "nedo/model.hpp"
           #include <iomanip>
           #include <iostream>
+          #include <stdexcept>
           int main(int argc,char**argv){
               nedo::NedoModel m(argv[1]);
               const std::string prompt="Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n";
@@ -53,6 +61,9 @@ jobs:
               std::cout<<std::dec<<"\nRAW_BYTES "<<out.size()<<"\n";
               std::cout.write(out.data(),static_cast<std::streamsize>(out.size()));
               std::cout<<"\n";
+              if(out.empty()) throw std::runtime_error("generation returned empty output");
+              if(out.find("Asistan cevabı:") != std::string::npos)
+                  throw std::runtime_error("generation repeated the prompt label");
           }
           CPP
           c++ -std=c++20 -O2 -Iinclude /tmp/nedo_smoke.cpp build/libnedo_core.a -fopenmp -o /tmp/nedo_smoke
