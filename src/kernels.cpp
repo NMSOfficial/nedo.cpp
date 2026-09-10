@@ -47,6 +47,28 @@ void rms_norm(const float*x,const uint16_t*w,float*y,size_t n,float eps) noexcep
 #endif
     for(size_t i=0;i<n;++i)y[i]=x[i]*inv*fp16_to_fp32(w[i]);
 }
+void rms_norm_tensor(const float*x,const TensorInfo&w,std::span<const std::byte>b,float*y,size_t n,float eps){
+    if(w.shape.size()!=1 || w.shape[0]!=n) throw std::runtime_error("bad RMSNorm tensor: "+w.name);
+    double ss=0.0; for(size_t i=0;i<n;++i) ss+=double(x[i])*x[i];
+    const float inv=1.0f/std::sqrt(float(ss/n)+eps);
+    if(w.type==TensorType::F32){
+        const float* wf=reinterpret_cast<const float*>(b.data());
+#if defined(_OPENMP)
+#pragma omp simd
+#endif
+        for(size_t i=0;i<n;++i)y[i]=x[i]*inv*wf[i];
+        return;
+    }
+    if(w.type==TensorType::F16){
+        const uint16_t* wh=reinterpret_cast<const uint16_t*>(b.data());
+#if defined(_OPENMP)
+#pragma omp simd
+#endif
+        for(size_t i=0;i<n;++i)y[i]=x[i]*inv*fp16_to_fp32(wh[i]);
+        return;
+    }
+    throw std::runtime_error("unsupported RMSNorm tensor type: "+w.name);
+}
 void add_inplace(float*d,const float*s,size_t n) noexcept{
 #if defined(_OPENMP)
 #pragma omp simd

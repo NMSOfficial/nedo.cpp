@@ -9,6 +9,8 @@ namespace nedo::kernels {
 float fp16_to_fp32(uint16_t h) noexcept;
 uint16_t fp32_to_fp16(float f) noexcept;
 void rms_norm(const float* x, const uint16_t* w, float* y, size_t n, float eps) noexcept;
+void rms_norm_tensor(const float* x, const TensorInfo& w, std::span<const std::byte> bytes,
+                     float* y, size_t n, float eps);
 void add_inplace(float* dst, const float* src, size_t n) noexcept;
 void mul_inplace(float* dst, const float* scale, size_t n) noexcept;
 void silu_mul(float* gate, const float* up, size_t n) noexcept;
