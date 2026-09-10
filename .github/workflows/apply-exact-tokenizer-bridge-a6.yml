@@ -1,0 +1,48 @@
+name: apply-exact-tokenizer-bridge-a6
+on:
+  push:
+    branches: [generation-a6]
+    paths: ['.github/workflows/apply-exact-tokenizer-bridge-a6.yml']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: generation-a6
+      - name: Add pre-tokenized native generation path
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/model.cpp')
+          s = p.read_text()
+          old = 'std::string NedoModel::generate(std::string_view prompt,const GenerationConfig& gc){'
+          new = 'std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc){'
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = '    std::vector<uint32_t> tokens=tok_.encode(prompt,gc.add_bos);\n    if(tokens.empty()) {\n        tokens.push_back(tok_.bos_id().value_or(1u));\n    }'
+          new = '    std::vector<uint32_t> tokens=prompt_ids;\n    const uint32_t bos=tok_.bos_id().value_or(1u);\n    if(gc.add_bos && (tokens.empty() || tokens.front()!=bos)) tokens.insert(tokens.begin(),bos);\n    if(tokens.empty()) tokens.push_back(bos);\n    for(uint32_t id:tokens) if(id>=cfg_.vocab) throw std::runtime_error("prompt token id out of range");'
+          assert old in s
+          s = s.replace(old, new, 1)
+          old = '    return tok_.decode(generated);\n}\n}'
+          new = '    return generated;\n}\n\nstd::string NedoModel::generate(std::string_view prompt,const GenerationConfig& gc){\n    const auto prompt_ids=tok_.encode(prompt,false);\n    return tok_.decode(generate_ids(prompt_ids,gc));\n}\n}'
+          assert old in s
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('src/pybind.cpp')
+          s = p.read_text()
+          old = '.def("detokenize",&nedo::NedoModel::detokenize).def("generate",&nedo::NedoModel::generate,py::arg("prompt"),py::arg("config")=nedo::GenerationConfig{});'
+          new = '.def("detokenize",&nedo::NedoModel::detokenize).def("generate_ids",&nedo::NedoModel::generate_ids,py::arg("prompt_ids"),py::arg("config")=nedo::GenerationConfig{}).def("generate",&nedo::NedoModel::generate,py::arg("prompt"),py::arg("config")=nedo::GenerationConfig{});'
+          assert old in s
+          p.write_text(s.replace(old,new,1))
+          PY
+          git config user.name 'NMSOfficial'
+          git config user.email '154451479+NMSOfficial@users.noreply.github.com'
+          git add src/model.cpp src/pybind.cpp
+          git commit -m 'Add pre-tokenized native generation path'
+          git push origin generation-a6
