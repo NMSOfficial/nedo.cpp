@@ -23,8 +23,8 @@ jobs:
           cmake -S . -B build -DNEDO_BUILD_PYTHON=OFF -DNEDO_NATIVE=OFF -DNEDO_BUILD_TESTS=ON
           cmake --build build -j2
           ctest --test-dir build --output-on-failure
-          python -m pip install .
-          PYTHONPATH=python pytest -q
+          python -m pip install . pytest
+          PYTHONPATH=python python -m pytest -q
       - name: F16 checkpoint smoke
         shell: bash
         env:
