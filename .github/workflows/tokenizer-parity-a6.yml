@@ -48,3 +48,4 @@ jobs:
               raise SystemExit('tokenizer round-trip failure')
           print('EXACT_PARITY true')
           PY
+# release gate rerun: trailing MorphFFN
