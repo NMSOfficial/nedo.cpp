@@ -1,0 +1,35 @@
+name: tokenizer-parity-a6
+on:
+  push:
+    branches: [generation-a6]
+    paths: ['.github/workflows/tokenizer-parity-a6.yml']
+permissions:
+  contents: read
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: generation-a6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build official tokenizer and compare prompt
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/ethosoftai/NedoTokenizer.git /tmp/NedoTokenizer
+          python -m pip install /tmp/NedoTokenizer
+          python -m pip install .
+          python - <<'PY'
+          from pathlib import Path
+          from nedotokenizer import SurfaceTokenizer
+          import nedo.cpp as nedo
+          prompt='Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n'
+          vocab=Path('/tmp/NedoTokenizer/assets/surface-vocab.bin').read_bytes()
+          ref=SurfaceTokenizer(vocab)
+          print('REFERENCE_IDS', list(ref.encode_ids(prompt.encode('utf-8'))))
+          m=nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
+          print('NEDO_IDS', m.tokenize(prompt))
+          PY
