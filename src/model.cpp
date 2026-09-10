@@ -196,13 +196,14 @@ std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& promp
     }
 
     auto apply_morph=[&](uint32_t token_id,uint32_t layer){
-        if(layer>=cfg_.morph_layers || !route) return;
+        if(layer < cfg_.layers - cfg_.morph_layers || !route) return;
         const float root=route[static_cast<size_t>(token_id)*2];
         const float suffix=route[static_cast<size_t>(token_id)*2+1];
         const uint32_t s=cfg_.morph_shared;
         const uint32_t r_end=s+cfg_.morph_root;
         const uint32_t z_end=r_end+cfg_.morph_suffix;
-        // Export contract: FFN neurons are laid out [shared | root | suffix].
+        // NedoLM keeps the first (layers-morph_layers) blocks on the standard FFN path;
+        // MorphFFN occupies the trailing blocks. Neurons are [shared | root | suffix].
         // The tid2eid pair is [ROOT, SUFFIX]; OTHER is (0,0). Shared is always active.
         if(root<0.5f) std::fill(gate.begin()+s,gate.begin()+r_end,0.f);
         if(suffix<0.5f) std::fill(gate.begin()+r_end,gate.begin()+z_end,0.f);
