@@ -4,6 +4,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 #include "nedo/gguf.hpp"
 namespace nedo {
@@ -20,8 +21,10 @@ private:
     struct Node { int token{-1}; std::vector<std::pair<uint8_t,uint32_t>> next; };
     std::vector<std::string> tokens_;
     std::vector<Node> trie_;
+    std::unordered_map<std::string,uint32_t> piece_to_id_;
     std::optional<uint32_t> bos_,eos_;
     static std::string unescape_rwkv(std::string_view s);
     void insert(uint32_t id, std::string_view bytes);
+    void encode_bpe_segment(std::string_view bytes, std::vector<uint32_t>& out) const;
 };
 }
