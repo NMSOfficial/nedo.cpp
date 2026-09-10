@@ -4,13 +4,16 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "nedo-cpp"
-version = "0.1.0a6"
+version = "0.1.0a7"
 description = "Independent, high-performance C++ runtime for NedoLM GGUF models"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "NedoLM contributors"}]
-dependencies = ["huggingface_hub>=0.34"]
+dependencies = [
+  "huggingface_hub>=0.34",
+  "nedotokenizer @ git+https://github.com/ethosoftai/NedoTokenizer.git@8bf1b7ea881d11dd3c230209572b9267f7a68962",
+]
 classifiers = ["Programming Language :: Python :: 3", "Programming Language :: C++", "License :: OSI Approved :: Apache Software License"]
 
 [project.scripts]
