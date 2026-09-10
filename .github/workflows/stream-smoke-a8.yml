@@ -32,7 +32,7 @@ jobs:
           import nedo.cpp as nedo
           m=nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
           prompt='Kullanıcı talimatı:\nsa\n\nAsistan cevabı:\n'
-          c=nedo.GenerationConfig(); c.max_new_tokens=16; c.temperature=0.0; c.seed=1; c.add_bos=True
+          c=nedo.GenerationConfig(); c.max_new_tokens=16; c.temperature=0.8; c.top_p=0.95; c.top_k=40; c.seed=1; c.add_bos=False
           chunks=[]; times=[]
           start=time.monotonic()
           def emit(text):
