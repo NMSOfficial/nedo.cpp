@@ -25,6 +25,7 @@ public:
     std::string summary()const;
     std::vector<uint32_t> tokenize(std::string_view s,bool bos=false)const{return tok_.encode(s,bos);}
     std::string detokenize(const std::vector<uint32_t>&v)const{return tok_.decode(v);}
+    std::vector<uint32_t> generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc={});
     std::string generate(std::string_view prompt,const GenerationConfig& gc={});
 private:
     struct Layer { const TensorInfo *an{},*q{},*k{},*v{},*o{},*fn{},*gate{},*up{},*down{}; };
