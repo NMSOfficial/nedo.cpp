@@ -1,0 +1,3 @@
+#include "nedo/model.hpp"
+#include <iostream>
+int main(int argc,char**argv){if(argc!=2){std::cerr<<"usage: nedo-inspect MODEL.gguf\n";return 2;}try{nedo::NedoModel m(argv[1]);std::cout<<m.summary()<<"\n\nMetadata:\n";for(auto&[k,v]:m.gguf().metadata())std::cout<<"  "<<k<<" = "<<nedo::value_to_string(v)<<"\n";std::cout<<"\nTensors:\n";for(auto&t:m.gguf().tensors()){std::cout<<"  "<<t.name<<" [";for(size_t i=0;i<t.shape.size();++i){if(i)std::cout<<",";std::cout<<t.shape[i];}std::cout<<"] "<<nedo::tensor_type_name(t.type)<<"\n";}return 0;}catch(const std::exception&e){std::cerr<<"error: "<<e.what()<<"\n";return 1;}}
