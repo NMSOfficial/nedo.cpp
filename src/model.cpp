@@ -154,7 +154,7 @@ std::string NedoModel::summary()const {
     return o.str();
 }
 
-std::string NedoModel::generate(std::string_view prompt,const GenerationConfig& gc){
+std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc){
     if(!schema_.architecture_ok) throw std::runtime_error("GGUF architecture is not nedolm");
     if(!schema_.standard_tensors_ok) {
         std::ostringstream e; e<<"model schema is incomplete";
@@ -165,10 +165,11 @@ std::string NedoModel::generate(std::string_view prompt,const GenerationConfig& 
         throw std::runtime_error("invalid GQA dimensions");
     if(!cfg_.context) throw std::runtime_error("context_length is zero");
 
-    std::vector<uint32_t> tokens=tok_.encode(prompt,gc.add_bos);
-    if(tokens.empty()) {
-        tokens.push_back(tok_.bos_id().value_or(1u));
-    }
+    std::vector<uint32_t> tokens=prompt_ids;
+    const uint32_t bos=tok_.bos_id().value_or(1u);
+    if(gc.add_bos && (tokens.empty() || tokens.front()!=bos)) tokens.insert(tokens.begin(),bos);
+    if(tokens.empty()) tokens.push_back(bos);
+    for(uint32_t id:tokens) if(id>=cfg_.vocab) throw std::runtime_error("prompt token id out of range");
     if(tokens.size()>cfg_.context) {
         tokens.erase(tokens.begin(),tokens.end()-cfg_.context);
     }
@@ -274,6 +275,11 @@ std::string NedoModel::generate(std::string_view prompt,const GenerationConfig& 
         generated.push_back(next);
         forward(next,pos++);
     }
-    return tok_.decode(generated);
+    return generated;
+}
+
+std::string NedoModel::generate(std::string_view prompt,const GenerationConfig& gc){
+    const auto prompt_ids=tok_.encode(prompt,false);
+    return tok_.decode(generate_ids(prompt_ids,gc));
 }
 }
