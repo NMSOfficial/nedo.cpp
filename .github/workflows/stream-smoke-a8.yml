@@ -1,14 +1,10 @@
-name: stream-smoke-a8
+name: rope-half-smoke
 on:
   push:
-    branches: [stream-a8]
+    branches: [rope-half-probe]
     paths:
-      - 'src/model.cpp'
-      - 'src/pybind.cpp'
-      - 'include/nedo/model.hpp'
-      - 'python/nedo/cpp.py'
-      - 'python/nedo/cli.py'
-      - 'stream-smoke-a8.stamp'
+      - 'src/kernels.cpp'
+      - 'rope-half-smoke.stamp'
       - '.github/workflows/stream-smoke-a8.yml'
 permissions:
   contents: read
@@ -18,12 +14,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with: {ref: stream-a8}
+        with: {ref: rope-half-probe}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - name: Install clean package
         run: python -m pip install .
-      - name: F16 chat-wrapper streaming smoke
+      - name: F16 raw-sa half-split RoPE smoke
         env:
           OMP_NUM_THREADS: '4'
         run: |
@@ -31,19 +27,12 @@ jobs:
           import time
           import nedo.cpp as nedo
           m=nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
-          prompt='Kullanıcı talimatı:\nAşağıdaki kullanıcı mesajına doğrudan ve doğal Türkçe yanıt ver:\nsa\n\nAsistan cevabı:\n'
-          c=nedo.GenerationConfig(); c.max_new_tokens=24; c.temperature=0.0; c.seed=1
-          chunks=[]; times=[]
-          start=time.monotonic()
+          prompt='Kullanıcı talimatı:\nsa\n\nAsistan cevabı:\n'
+          c=nedo.GenerationConfig(); c.max_new_tokens=16; c.temperature=0.0; c.seed=1
+          chunks=[]
           def emit(text):
-              chunks.append(text); times.append(time.monotonic())
-              print('CHUNK', repr(text), flush=True)
+              chunks.append(text); print('CHUNK',repr(text),flush=True)
           out=m.generate_stream(prompt,c,on_text=emit)
-          end=time.monotonic()
           print('OUT',repr(out),flush=True)
-          print('CHUNKS',len(chunks),'FIRST_S',times[0]-start if times else None,'TOTAL_S',end-start,flush=True)
-          if not chunks: raise SystemExit('no streaming callbacks')
-          if ''.join(chunks)!=out: raise SystemExit('stream chunks != returned output')
-          if not out.strip(): raise SystemExit('chat wrapper generated only whitespace')
-          if not times[0] < end: raise SystemExit('first chunk was not emitted before generation returned')
+          if not out.strip(): raise SystemExit('raw sa generated only whitespace')
           PY
