@@ -1,0 +1,46 @@
+name: smoke-generation-a6
+on:
+  push:
+    branches: [generation-a6]
+    paths: ['.github/workflows/smoke-a6.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: generation-a6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and unit test
+        shell: bash
+        run: |
+          cmake -S . -B build -DNEDO_BUILD_PYTHON=OFF -DNEDO_NATIVE=OFF -DNEDO_BUILD_TESTS=ON
+          cmake --build build -j2
+          ctest --test-dir build --output-on-failure
+          python -m pip install .
+          PYTHONPATH=python pytest -q
+      - name: F16 checkpoint smoke
+        shell: bash
+        env:
+          OMP_NUM_THREADS: '4'
+        run: |
+          python - <<'PY'
+          import nedo.cpp as nedo
+          m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
+          print(m.summary())
+          cfg = nedo.GenerationConfig()
+          cfg.max_new_tokens = 4
+          cfg.temperature = 0.0
+          prompt = 'Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n'
+          print('PROMPT_IDS', m.tokenize(prompt))
+          out = m.generate(prompt, cfg)
+          print('RAW_OUTPUT_BEGIN')
+          print(out)
+          print('RAW_OUTPUT_END')
+          PY
