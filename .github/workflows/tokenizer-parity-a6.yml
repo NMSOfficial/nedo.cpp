@@ -5,6 +5,10 @@ on:
     paths:
       - 'src/tokenizer.cpp'
       - 'include/nedo/tokenizer.hpp'
+      - 'src/model.cpp'
+      - 'include/nedo/model.hpp'
+      - 'src/pybind.cpp'
+      - 'python/nedo/cpp.py'
       - '.github/workflows/tokenizer-parity-a6.yml'
   workflow_dispatch:
 permissions:
@@ -33,12 +37,14 @@ jobs:
 
           prompt = 'Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n'
           vocab = Path('/tmp/NedoTokenizer/assets/surface-vocab.bin').read_bytes()
-          reference = list(SurfaceTokenizer(vocab).encode_ids(prompt.encode('utf-8')))
+          reference = [int(x) for x in SurfaceTokenizer(vocab).encode_ids(prompt.encode('utf-8'))]
           model = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
           actual = model.tokenize(prompt)
           print('REFERENCE_IDS', reference)
           print('NEDO_IDS', actual)
           if actual != reference:
               raise SystemExit(f'tokenizer parity failure: expected {reference}, got {actual}')
+          if model.detokenize(actual) != prompt:
+              raise SystemExit('tokenizer round-trip failure')
           print('EXACT_PARITY true')
           PY
