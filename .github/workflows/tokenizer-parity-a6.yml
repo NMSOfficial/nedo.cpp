@@ -2,7 +2,11 @@ name: tokenizer-parity-a6
 on:
   push:
     branches: [generation-a6]
-    paths: ['.github/workflows/tokenizer-parity-a6.yml']
+    paths:
+      - 'src/tokenizer.cpp'
+      - 'include/nedo/tokenizer.hpp'
+      - '.github/workflows/tokenizer-parity-a6.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -16,10 +20,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build official tokenizer and compare prompt
+      - name: Exact NDSRF004 tokenizer parity
         shell: bash
         run: |
-          echo 'parity pass 2'
           git clone --depth 1 https://github.com/ethosoftai/NedoTokenizer.git /tmp/NedoTokenizer
           python -m pip install /tmp/NedoTokenizer
           python -m pip install .
@@ -27,13 +30,15 @@ jobs:
           from pathlib import Path
           from nedotokenizer import SurfaceTokenizer
           import nedo.cpp as nedo
-          prompt='Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n'
-          vocab=Path('/tmp/NedoTokenizer/assets/surface-vocab.bin').read_bytes()
-          ref=SurfaceTokenizer(vocab)
-          reference=list(ref.encode_ids(prompt.encode('utf-8')))
-          m=nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
-          actual=m.tokenize(prompt)
+
+          prompt = 'Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n'
+          vocab = Path('/tmp/NedoTokenizer/assets/surface-vocab.bin').read_bytes()
+          reference = list(SurfaceTokenizer(vocab).encode_ids(prompt.encode('utf-8')))
+          model = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
+          actual = model.tokenize(prompt)
           print('REFERENCE_IDS', reference)
           print('NEDO_IDS', actual)
-          print('EXACT_PARITY', reference == actual)
+          if actual != reference:
+              raise SystemExit(f'tokenizer parity failure: expected {reference}, got {actual}')
+          print('EXACT_PARITY true')
           PY
