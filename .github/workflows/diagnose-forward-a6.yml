@@ -1,0 +1,54 @@
+name: diagnose-forward-a6
+on:
+  push:
+    branches: [generation-a6]
+    paths: ['.github/workflows/diagnose-forward-a6.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: generation-a6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and inspect GGUF contract
+        shell: bash
+        run: |
+          cmake -S . -B build -DNEDO_BUILD_PYTHON=OFF -DNEDO_NATIVE=OFF
+          cmake --build build -j2
+          python -m pip install huggingface_hub
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF','NedoLM-0.8B-SFT-step-00006478-F16-NDSRF004.gguf'))
+          PY
+          )
+          build/nedo-inspect "$MODEL" | sed -n '/Metadata:/,/Tensors:/p'
+          cat >/tmp/route.cpp <<'CPP'
+          #include "nedo/gguf.hpp"
+          #include <algorithm>
+          #include <cstring>
+          #include <iomanip>
+          #include <iostream>
+          #include <map>
+          #include <set>
+          int main(int argc,char**argv){
+            nedo::GgufFile g(argv[1]);
+            auto*t=g.tensor("blk.0.ffn_gate_tid2eid.weight");
+            if(!t){std::cout<<"NO_ROUTE\n";return 0;}
+            std::cout<<"ROUTE shape";for(auto x:t->shape)std::cout<<' '<<x;std::cout<<" type "<<nedo::tensor_type_name(t->type)<<"\n";
+            auto b=g.bytes(*t); const float*p=reinterpret_cast<const float*>(b.data());
+            std::map<std::pair<int,int>,size_t> counts;
+            for(size_t id=0;id<t->shape[1];++id){int a=(int)p[id*2],z=(int)p[id*2+1];counts[{a,z}]++;}
+            for(auto &[k,n]:counts)std::cout<<"PAIR "<<k.first<<' '<<k.second<<" count="<<n<<"\n";
+            for(unsigned id: {6237u,941u,5885u,259u,61u,13u,18711u,419u,68u,337u,751u,5156u})
+              std::cout<<"ID "<<id<<" route="<<p[id*2]<<','<<p[id*2+1]<<"\n";
+          }
+          CPP
+          c++ -std=c++20 -O2 -Iinclude /tmp/route.cpp build/libnedo_core.a -fopenmp -o /tmp/route
+          /tmp/route "$MODEL"
