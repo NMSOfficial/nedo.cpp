@@ -15,20 +15,64 @@ std::optional<uint32_t> meta_id(const GgufFile& g, std::string_view k) {
     if (auto v = g.u64_meta(k)) return static_cast<uint32_t>(*v);
     return {};
 }
+
+int hex_value(char c) noexcept {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
 }
 
 std::string SurfaceTokenizer::unescape_rwkv(std::string_view s) {
     std::string o;
     o.reserve(s.size());
     for (size_t i = 0; i < s.size();) {
+        // Also accept legacy <0xNN> byte-token spelling.
         if (i + 6 <= s.size() && s[i] == '<' && s[i + 1] == '0' && s[i + 2] == 'x' && s[i + 5] == '>') {
-            unsigned v = 0;
-            auto r = std::from_chars(s.data() + i + 3, s.data() + i + 5, v, 16);
-            if (r.ec == std::errc{} && r.ptr == s.data() + i + 5 && v <= 0xffu) {
-                o.push_back(static_cast<char>(v)); i += 6; continue;
+            const int hi = hex_value(s[i + 3]);
+            const int lo = hex_value(s[i + 4]);
+            if (hi >= 0 && lo >= 0) {
+                o.push_back(static_cast<char>((hi << 4) | lo));
+                i += 6;
+                continue;
             }
         }
-        o.push_back(s[i++]);
+        if (s[i] != '\\') {
+            o.push_back(s[i++]);
+            continue;
+        }
+        // GGUF RWKV vocab stores arbitrary bytes as C-like escapes: \\xNN,
+        // plus the usual newline/tab/carriage-return/backslash escapes.
+        if (++i >= s.size()) {
+            o.push_back('\\');
+            break;
+        }
+        const char esc = s[i++];
+        switch (esc) {
+            case 'n': o.push_back('\n'); break;
+            case 'r': o.push_back('\r'); break;
+            case 't': o.push_back('\t'); break;
+            case '\\': o.push_back('\\'); break;
+            case 'x': {
+                if (i + 1 < s.size()) {
+                    const int hi = hex_value(s[i]);
+                    const int lo = hex_value(s[i + 1]);
+                    if (hi >= 0 && lo >= 0) {
+                        o.push_back(static_cast<char>((hi << 4) | lo));
+                        i += 2;
+                        break;
+                    }
+                }
+                // Malformed escape: preserve it losslessly rather than dropping data.
+                o += "\\x";
+                break;
+            }
+            default:
+                // RWKV's reference unescaper treats an unknown escape as the escaped byte.
+                o.push_back(esc);
+                break;
+        }
     }
     return o;
 }
