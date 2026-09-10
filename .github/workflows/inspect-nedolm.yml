@@ -1,0 +1,59 @@
+name: inspect-nedolm-header
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-nedolm.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read remote GGUF header only
+        shell: bash
+        run: |
+          python - <<'PY'
+          import io, struct, urllib.request
+          url='https://huggingface.co/Ethosoft/NedoLM-0.8B-SFT-6478-GGUF/resolve/main/NedoLM-0.8B-SFT-step-00006478-F16-NDSRF004.gguf'
+          req=urllib.request.Request(url, headers={'Range':'bytes=0-8388607','User-Agent':'nedo.cpp-header-probe'})
+          with urllib.request.urlopen(req) as r:
+              data=r.read(8388608)
+          print('RANGE_BYTES',len(data))
+          f=io.BytesIO(data)
+          def rd(fmt):
+              n=struct.calcsize('<'+fmt); b=f.read(n)
+              if len(b)!=n: raise EOFError(f'need {n} at {f.tell()}')
+              return struct.unpack('<'+fmt,b)[0]
+          def s():
+              n=rd('Q'); b=f.read(n)
+              if len(b)!=n: raise EOFError('string')
+              return b.decode('utf-8','replace')
+          fmts={0:'B',1:'b',2:'H',3:'h',4:'I',5:'i',6:'f',7:'B',10:'Q',11:'q',12:'d'}
+          def scalar(t):
+              if t==8: return s()
+              return rd(fmts[t])
+          def val(t, keep=True):
+              if t!=9: return scalar(t)
+              et=rd('I'); n=rd('Q')
+              if keep and n<=64:
+                  return ('array',et,n,[scalar(et) for _ in range(n)])
+              for _ in range(n): scalar(et)
+              return ('array',et,n)
+          magic=f.read(4); ver=rd('I'); nt=rd('Q'); nkv=rd('Q')
+          print('MAGIC',magic,'VERSION',ver,'TENSORS',nt,'METADATA',nkv)
+          meta={}
+          for _ in range(nkv):
+              k=s(); t=rd('I'); v=val(t, keep=not k.startswith('tokenizer.ggml.tokens'))
+              meta[k]=v
+          print('--- METADATA ---')
+          for k in sorted(meta):
+              if k=='tokenizer.ggml.tokens':
+                  print(k, meta[k][:3])
+              else:
+                  print(k, repr(meta[k]))
+          print('--- TENSORS ---')
+          for _ in range(nt):
+              name=s(); nd=rd('I'); dims=[rd('Q') for _ in range(nd)]; typ=rd('I'); off=rd('Q')
+              print(name, 'shape='+str(dims), 'type='+str(typ), 'offset='+str(off))
+          print('HEADER_END',f.tell())
+          PY
