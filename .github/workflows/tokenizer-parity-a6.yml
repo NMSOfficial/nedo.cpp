@@ -19,6 +19,7 @@ jobs:
       - name: Build official tokenizer and compare prompt
         shell: bash
         run: |
+          echo 'parity pass 2'
           git clone --depth 1 https://github.com/ethosoftai/NedoTokenizer.git /tmp/NedoTokenizer
           python -m pip install /tmp/NedoTokenizer
           python -m pip install .
@@ -29,7 +30,10 @@ jobs:
           prompt='Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n'
           vocab=Path('/tmp/NedoTokenizer/assets/surface-vocab.bin').read_bytes()
           ref=SurfaceTokenizer(vocab)
-          print('REFERENCE_IDS', list(ref.encode_ids(prompt.encode('utf-8'))))
+          reference=list(ref.encode_ids(prompt.encode('utf-8')))
           m=nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
-          print('NEDO_IDS', m.tokenize(prompt))
+          actual=m.tokenize(prompt)
+          print('REFERENCE_IDS', reference)
+          print('NEDO_IDS', actual)
+          print('EXACT_PARITY', reference == actual)
           PY
