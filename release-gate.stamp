@@ -1,0 +1,4 @@
+nedo.cpp 0.1.0a6 final release gate
+MorphFFN placement: trailing 18 of 24 layers
+Tokenizer: canonical NDSRF004 parity required
+Checkpoint smoke: Ethosoft/NedoLM-0.8B-SFT-6478-GGUF F16
