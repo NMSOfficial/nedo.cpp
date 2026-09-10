@@ -50,11 +50,13 @@ def chat(args: argparse.Namespace) -> int:
             continue
         prompt = _build_prompt(history, user_text)
         try:
-            text = model.generate(prompt, cfg)
+            def emit(chunk: str) -> None:
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
+            text = model.generate_stream(prompt, cfg, on_text=emit)
         except RuntimeError as exc:
             print(f"nedo.cpp generation hatası: {exc}", file=sys.stderr)
             return 2
-        sys.stdout.write(text)
         if not text.endswith("\n"):
             sys.stdout.write("\n")
         sys.stdout.flush()

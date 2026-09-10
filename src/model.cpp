@@ -154,7 +154,7 @@ std::string NedoModel::summary()const {
     return o.str();
 }
 
-std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc){
+std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc,const std::function<void(uint32_t)>& on_token){
     if(!schema_.architecture_ok) throw std::runtime_error("GGUF architecture is not nedolm");
     if(!schema_.standard_tensors_ok) {
         std::ostringstream e; e<<"model schema is incomplete";
@@ -274,6 +274,7 @@ std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& promp
         const uint32_t next=sample_token(logits,gc,rng);
         if(next==eos) break;
         generated.push_back(next);
+        if(on_token) on_token(next);
         forward(next,pos++);
     }
     return generated;

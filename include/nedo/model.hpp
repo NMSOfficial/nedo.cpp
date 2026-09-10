@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <functional>
 namespace nedo {
 struct ModelConfig {
     uint32_t vocab=0,dim=0,layers=0,heads=0,kv_heads=0,head_dim=0,ffn=0,context=0,sliding=0;
@@ -25,7 +26,7 @@ public:
     std::string summary()const;
     std::vector<uint32_t> tokenize(std::string_view s,bool bos=false)const{return tok_.encode(s,bos);}
     std::string detokenize(const std::vector<uint32_t>&v)const{return tok_.decode(v);}
-    std::vector<uint32_t> generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc={});
+    std::vector<uint32_t> generate_ids(const std::vector<uint32_t>& prompt_ids,const GenerationConfig& gc={},const std::function<void(uint32_t)>& on_token={});
     std::string generate(std::string_view prompt,const GenerationConfig& gc={});
 private:
     struct Layer { const TensorInfo *an{},*q{},*k{},*v{},*o{},*fn{},*gate{},*up{},*down{}; };

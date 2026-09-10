@@ -1,4 +1,5 @@
 from __future__ import annotations
+import codecs
 from pathlib import Path
 from ._hub import parse_hf_source, select_gguf, select_tokenizer_sidecar
 
@@ -74,6 +75,34 @@ class Model:
         prompt_ids = self.tokenize(prompt, add_bos=False)
         generated = self.generate_ids(prompt_ids, config)
         return self.detokenize(generated)
+
+    def generate_stream(self, prompt: str, config=None, on_text=None) -> str:
+        """Generate once while delivering decoded UTF-8 text as soon as tokens arrive.
+
+        ``on_text`` receives plain text chunks. The returned value is the complete
+        generated text, preserving the non-streaming ``generate`` API.
+        """
+        if config is None:
+            config = GenerationConfig()
+        prompt_ids = self.tokenize(prompt, add_bos=False)
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        chunks: list[str] = []
+
+        def on_token(token_id: int) -> None:
+            raw = bytes(self._tokenizer.decode_ids([int(token_id)]))
+            text = decoder.decode(raw, final=False)
+            if text:
+                chunks.append(text)
+                if on_text is not None:
+                    on_text(text)
+
+        self._native.generate_ids_stream(prompt_ids, config, on_token)
+        tail = decoder.decode(b"", final=True)
+        if tail:
+            chunks.append(tail)
+            if on_text is not None:
+                on_text(tail)
+        return "".join(chunks)
 
     @property
     def native(self):
