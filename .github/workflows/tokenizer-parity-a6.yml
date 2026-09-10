@@ -10,6 +10,7 @@ on:
       - 'src/pybind.cpp'
       - 'python/nedo/cpp.py'
       - '.github/workflows/tokenizer-parity-a6.yml'
+      - 'release-gate.stamp'
   workflow_dispatch:
 permissions:
   contents: read
@@ -48,4 +49,3 @@ jobs:
               raise SystemExit('tokenizer round-trip failure')
           print('EXACT_PARITY true')
           PY
-# release gate rerun: trailing MorphFFN
