@@ -89,7 +89,20 @@ void silu_mul(float*g,const float*u,size_t n) noexcept{
 }
 void softmax(float*x,size_t n) noexcept{ if(!n)return; float m=*std::max_element(x,x+n),s=0; for(size_t i=0;i<n;++i){x[i]=std::exp(x[i]-m);s+=x[i];} float inv=1.0f/s; for(size_t i=0;i<n;++i)x[i]*=inv; }
 void rope(float*q,float*k,uint32_t nq,uint32_t nkv,uint32_t hd,uint64_t pos,float theta) noexcept{
-    auto rot=[&](float*p,uint32_t nh){for(uint32_t h=0;h<nh;++h){float* v=p+h*hd;for(uint32_t i=0;i+1<hd;i+=2){float freq=std::pow(theta,-float(i)/float(hd));float a=float(pos)*freq,c=std::cos(a),s=std::sin(a);float x=v[i],y=v[i+1];v[i]=x*c-y*s;v[i+1]=x*s+y*c;}}}; rot(q,nq);rot(k,nkv);
+    auto rot=[&](float*p,uint32_t nh){
+        const uint32_t half=hd/2;
+        for(uint32_t h=0;h<nh;++h){
+            float* v=p+h*hd;
+            for(uint32_t i=0;i<half;++i){
+                const float freq=std::pow(theta,-2.0f*float(i)/float(hd));
+                const float a=float(pos)*freq,c=std::cos(a),s=std::sin(a);
+                const float x=v[i],y=v[i+half];
+                v[i]=x*c-y*s;
+                v[i+half]=x*s+y*c;
+            }
+        }
+    };
+    rot(q,nq); rot(k,nkv);
 }
 
 namespace {
