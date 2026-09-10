@@ -42,7 +42,7 @@ uint16_t fp32_to_fp16(float f) noexcept {
 }
 void rms_norm(const float*x,const uint16_t*w,float*y,size_t n,float eps) noexcept{
     double ss=0.0; for(size_t i=0;i<n;++i)ss+=double(x[i])*x[i]; float inv=1.0f/std::sqrt(float(ss/n)+eps);
-#if defined(_OPENMP)
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp simd
 #endif
     for(size_t i=0;i<n;++i)y[i]=x[i]*inv*fp16_to_fp32(w[i]);
@@ -53,7 +53,7 @@ void rms_norm_tensor(const float*x,const TensorInfo&w,std::span<const std::byte>
     const float inv=1.0f/std::sqrt(float(ss/n)+eps);
     if(w.type==TensorType::F32){
         const float* wf=reinterpret_cast<const float*>(b.data());
-#if defined(_OPENMP)
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp simd
 #endif
         for(size_t i=0;i<n;++i)y[i]=x[i]*inv*wf[i];
@@ -61,7 +61,7 @@ void rms_norm_tensor(const float*x,const TensorInfo&w,std::span<const std::byte>
     }
     if(w.type==TensorType::F16){
         const uint16_t* wh=reinterpret_cast<const uint16_t*>(b.data());
-#if defined(_OPENMP)
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp simd
 #endif
         for(size_t i=0;i<n;++i)y[i]=x[i]*inv*fp16_to_fp32(wh[i]);
@@ -70,19 +70,19 @@ void rms_norm_tensor(const float*x,const TensorInfo&w,std::span<const std::byte>
     throw std::runtime_error("unsupported RMSNorm tensor type: "+w.name);
 }
 void add_inplace(float*d,const float*s,size_t n) noexcept{
-#if defined(_OPENMP)
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp simd
 #endif
     for(size_t i=0;i<n;++i)d[i]+=s[i];
 }
 void mul_inplace(float*d,const float*s,size_t n) noexcept{
-#if defined(_OPENMP)
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp simd
 #endif
     for(size_t i=0;i<n;++i)d[i]*=s[i];
 }
 void silu_mul(float*g,const float*u,size_t n) noexcept{
-#if defined(_OPENMP)
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp simd
 #endif
     for(size_t i=0;i<n;++i){float v=g[i]; g[i]=(v/(1.0f+std::exp(-v)))*u[i];}
