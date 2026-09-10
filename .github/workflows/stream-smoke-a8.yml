@@ -4,6 +4,7 @@ on:
     branches: [stream-a8]
     paths:
       - 'src/model.cpp'
+      - 'src/kernels.cpp'
       - 'src/pybind.cpp'
       - 'include/nedo/model.hpp'
       - 'python/nedo/cpp.py'
@@ -23,27 +24,44 @@ jobs:
         with: {python-version: '3.12'}
       - name: Install clean package
         run: python -m pip install .
-      - name: F16 primer streaming smoke
+      - name: F16 raw-chat streaming smoke
         env:
           OMP_NUM_THREADS: '4'
         run: |
           python - <<'PY'
           import time
           import nedo.cpp as nedo
-          m=nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
-          prompt='Kullanıcı talimatı:\nMerhaba\n\nAsistan cevabı:\nMerhaba! Nasıl yardımcı olabilirim?\n\nKullanıcı talimatı:\nsa\n\nAsistan cevabı:\n'
-          c=nedo.GenerationConfig(); c.max_new_tokens=16; c.temperature=0.0; c.seed=1
-          chunks=[]; times=[]
-          start=time.monotonic()
-          def emit(text):
-              chunks.append(text); times.append(time.monotonic())
-              print('CHUNK', repr(text), flush=True)
-          out=m.generate_stream(prompt,c,on_text=emit)
-          end=time.monotonic()
-          print('OUT',repr(out),flush=True)
-          print('CHUNKS',len(chunks),'FIRST_S',times[0]-start if times else None,'TOTAL_S',end-start,flush=True)
-          if not chunks: raise SystemExit('no streaming callbacks')
-          if ''.join(chunks)!=out: raise SystemExit('stream chunks != returned output')
-          if not out.strip(): raise SystemExit('primer generated only whitespace')
-          if not times[0] < end: raise SystemExit('first chunk was not emitted before generation returned')
+
+          m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
+
+          for user_text in ('sa', 'merhaba'):
+              prompt = f'Kullanıcı talimatı:\n{user_text}\n\nAsistan cevabı:\n'
+              c = nedo.GenerationConfig()
+              c.max_new_tokens = 16
+              c.temperature = 0.0
+              c.seed = 1
+              chunks = []
+              times = []
+              start = time.monotonic()
+
+              def emit(text):
+                  chunks.append(text)
+                  times.append(time.monotonic())
+                  print(user_text, 'CHUNK', repr(text), flush=True)
+
+              out = m.generate_stream(prompt, c, on_text=emit)
+              end = time.monotonic()
+              print(user_text, 'OUT', repr(out), flush=True)
+              print(user_text, 'FIRST_S', times[0] - start if times else None, 'TOTAL_S', end - start, flush=True)
+
+              if not chunks:
+                  raise SystemExit(f'{user_text}: no streaming callbacks')
+              if ''.join(chunks) != out:
+                  raise SystemExit(f'{user_text}: stream chunks != returned output')
+              if not out.strip():
+                  raise SystemExit(f'{user_text}: generated only whitespace')
+              if 'Asistan cevabı:' in out or 'Kullanıcı talimatı:' in out:
+                  raise SystemExit(f'{user_text}: repeated SFT prompt labels')
+              if not times[0] < end:
+                  raise SystemExit(f'{user_text}: first chunk was not emitted before return')
           PY
