@@ -25,22 +25,35 @@ jobs:
           ctest --test-dir build --output-on-failure
           python -m pip install . pytest
           PYTHONPATH=python python -m pytest -q
-      - name: F16 checkpoint smoke
+      - name: F16 checkpoint raw-byte smoke
         shell: bash
         env:
           OMP_NUM_THREADS: '4'
         run: |
-          python - <<'PY'
-          import nedo.cpp as nedo
-          m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16')
-          print(m.summary())
-          cfg = nedo.GenerationConfig()
-          cfg.max_new_tokens = 4
-          cfg.temperature = 0.0
-          prompt = 'Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n'
-          print('PROMPT_IDS', m.tokenize(prompt))
-          out = m.generate(prompt, cfg)
-          print('RAW_OUTPUT_BEGIN')
-          print(out)
-          print('RAW_OUTPUT_END')
+          MODEL_PATH=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF','NedoLM-0.8B-SFT-step-00006478-F16-NDSRF004.gguf'))
           PY
+          )
+          cat >/tmp/nedo_smoke.cpp <<'CPP'
+          #include "nedo/model.hpp"
+          #include <iomanip>
+          #include <iostream>
+          int main(int argc,char**argv){
+              nedo::NedoModel m(argv[1]);
+              const std::string prompt="Kullanıcı talimatı:\nmerhaba\n\nAsistan cevabı:\n";
+              const auto ids=m.tokenize(prompt,false);
+              std::cout<<m.summary()<<"\nPROMPT_IDS";
+              for(auto id:ids)std::cout<<' '<<id;
+              std::cout<<"\n";
+              nedo::GenerationConfig cfg; cfg.max_new_tokens=16; cfg.temperature=0.0f;
+              const auto out=m.generate(prompt,cfg);
+              std::cout<<"RAW_HEX ";
+              for(unsigned char c:out)std::cout<<std::hex<<std::setw(2)<<std::setfill('0')<<(unsigned)c;
+              std::cout<<std::dec<<"\nRAW_BYTES "<<out.size()<<"\n";
+              std::cout.write(out.data(),static_cast<std::streamsize>(out.size()));
+              std::cout<<"\n";
+          }
+          CPP
+          c++ -std=c++20 -O2 -Iinclude /tmp/nedo_smoke.cpp build/libnedo_core.a -fopenmp -o /tmp/nedo_smoke
+          /tmp/nedo_smoke "$MODEL_PATH"
