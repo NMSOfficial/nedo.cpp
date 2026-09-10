@@ -62,3 +62,4 @@ jobs:
           if 'Asistan cevabı:' in out:
               raise SystemExit('generation repeated the prompt label')
           PY
+# release gate rerun: trailing MorphFFN
