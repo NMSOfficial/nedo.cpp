@@ -42,6 +42,35 @@ if(NEDO_CUDA AND NOT DEFINED CMAKE_CUDA_COMPILER AND NOT DEFINED ENV{CUDACXX})
   endif()
 endif()
 
+# Prefer native SASS for the GPU that will execute the wheel. This avoids
+# relying on the NVIDIA driver's PTX JIT, which can reject PTX emitted by a
+# newer CUDA toolkit ("unsupported toolchain"). NEDO_CUDA_ARCH is also an
+# explicit escape hatch for cross-builds, e.g. NEDO_CUDA_ARCH=86 for Ampere.
+if(NEDO_CUDA AND NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  if(DEFINED ENV{NEDO_CUDA_ARCH} AND NOT "$ENV{NEDO_CUDA_ARCH}" STREQUAL "")
+    set(CMAKE_CUDA_ARCHITECTURES "$ENV{NEDO_CUDA_ARCH}" CACHE STRING "CUDA architectures" FORCE)
+    message(STATUS "nedo.cpp CUDA architecture override: ${CMAKE_CUDA_ARCHITECTURES}")
+  else()
+    find_program(NEDO_NVIDIA_SMI nvidia-smi HINTS /usr/bin /usr/local/bin)
+    if(NEDO_NVIDIA_SMI)
+      execute_process(
+        COMMAND "${NEDO_NVIDIA_SMI}" --query-gpu=compute_cap --format=csv,noheader
+        RESULT_VARIABLE NEDO_CUDA_CC_RESULT
+        OUTPUT_VARIABLE NEDO_CUDA_CC_OUTPUT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+      if(NEDO_CUDA_CC_RESULT EQUAL 0)
+        string(REGEX MATCH "[0-9]+\\.[0-9]+" NEDO_CUDA_CC "${NEDO_CUDA_CC_OUTPUT}")
+        if(NEDO_CUDA_CC)
+          string(REPLACE "." "" NEDO_CUDA_ARCH "${NEDO_CUDA_CC}")
+          set(CMAKE_CUDA_ARCHITECTURES "${NEDO_CUDA_ARCH}" CACHE STRING "CUDA architectures" FORCE)
+          message(STATUS "nedo.cpp detected local CUDA architecture: sm_${NEDO_CUDA_ARCH}")
+        endif()
+      endif()
+    endif()
+  endif()
+endif()
+
 set(NEDO_CUDA_ENABLED OFF)
 if(NEDO_CUDA)
   include(CheckLanguage)
@@ -51,6 +80,9 @@ if(NEDO_CUDA)
     find_package(CUDAToolkit REQUIRED)
     set(NEDO_CUDA_ENABLED ON)
     message(STATUS "nedo.cpp CUDA backend: ${CMAKE_CUDA_COMPILER}")
+    if(CMAKE_CUDA_ARCHITECTURES)
+      message(STATUS "nedo.cpp CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+    endif()
   elseif(NEDO_CUDA_REQUIRED)
     message(FATAL_ERROR "NEDO_CUDA_BUILD requested but nvcc/CUDA compiler was not found")
   else()
