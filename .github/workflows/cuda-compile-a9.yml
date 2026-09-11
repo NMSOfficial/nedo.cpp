@@ -4,8 +4,10 @@ on:
     branches: [cuda-a9]
     paths:
       - 'CMakeLists.txt'
+      - 'pyproject.toml'
       - 'include/nedo/**'
       - 'src/**'
+      - 'python/**'
       - '.github/workflows/cuda-compile-a9.yml'
 permissions:
   contents: read
@@ -14,9 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
       - name: Install CUDA compiler
         uses: Jimver/cuda-toolkit@v0.2.35
-        id: cuda-toolkit
         with:
           cuda: '12.8.1'
           method: network
@@ -31,3 +34,16 @@ jobs:
         run: cmake --build build -j2
       - name: CPU fallback tests in CUDA build
         run: ctest --test-dir build --output-on-failure
+      - name: Build and install CUDA Python extension
+        env:
+          NEDO_CUDA_BUILD: '1'
+        run: python -m pip install .
+      - name: Import CUDA-enabled extension without GPU
+        run: |
+          python - <<'PY'
+          import nedo.cpp as n
+          print('cuda_available=', n.cuda_available())
+          print('active_device=', n.active_device())
+          assert n.cuda_available() is False
+          assert n.active_device() == 'cpu'
+          PY
