@@ -1,5 +1,7 @@
 #include "nedo/kernels.hpp"
+#include "nedo/cuda_backend.hpp"
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -21,6 +23,11 @@
 #endif
 
 namespace nedo::kernels {
+namespace {
+enum class DeviceMode : uint8_t { Auto, Cpu, Cuda };
+std::atomic<DeviceMode> g_device{DeviceMode::Auto};
+}
+
 float fp16_to_fp32(uint16_t h) noexcept {
 #if defined(NEDO_X86_F16C)
     return _cvtsh_ss(h);
@@ -105,6 +112,35 @@ void rope(float*q,float*k,uint32_t nq,uint32_t nkv,uint32_t hd,uint64_t pos,floa
     rot(q,nq); rot(k,nkv);
 }
 
+void set_device(std::string_view requested) {
+    if (requested == "auto") {
+        g_device.store(DeviceMode::Auto, std::memory_order_relaxed);
+        return;
+    }
+    if (requested == "cpu") {
+        g_device.store(DeviceMode::Cpu, std::memory_order_relaxed);
+        return;
+    }
+    if (requested == "cuda") {
+        if (!cuda_backend::compiled())
+            throw std::runtime_error("CUDA requested but nedo.cpp was built without CUDA. Install the CUDA toolkit/nvcc and reinstall from source.");
+        if (!cuda_backend::available())
+            throw std::runtime_error("CUDA requested but no CUDA-capable device/driver is available");
+        g_device.store(DeviceMode::Cuda, std::memory_order_relaxed);
+        return;
+    }
+    throw std::runtime_error("unknown device '" + std::string(requested) + "' (expected auto, cpu, or cuda)");
+}
+
+bool cuda_available() noexcept { return cuda_backend::compiled() && cuda_backend::available(); }
+std::string cuda_device_name() { return cuda_available() ? cuda_backend::device_name() : std::string{}; }
+std::string device() {
+    const auto mode=g_device.load(std::memory_order_relaxed);
+    if(mode==DeviceMode::Cpu) return "cpu";
+    if(mode==DeviceMode::Cuda) return "cuda";
+    return cuda_available()?"cuda":"cpu";
+}
+
 namespace {
 inline float dot_f16(const uint16_t*w,const float*x,size_t n){
     float s=0.f; size_t i=0;
@@ -158,14 +194,21 @@ inline float dot_q4(const std::byte*p,const float*x,size_t n){
 #endif
         sum+=d*s;p+=16;}return sum;
 }
-}
-void matvec(const TensorInfo&t,std::span<const std::byte>b,const float*x,float*y){
+void matvec_cpu(const TensorInfo&t,std::span<const std::byte>b,const float*x,float*y){
     if(t.shape.size()!=2)throw std::runtime_error("matvec requires rank-2 tensor: "+t.name); size_t cols=t.shape[0],rows=t.shape[1];
     uint64_t rowbytes=tensor_nbytes(t.type,cols);
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) if(rows >= 256)
 #endif
     for(int64_t r=0;r<(int64_t)rows;++r){const std::byte*p=b.data()+uint64_t(r)*rowbytes;switch(t.type){case TensorType::F16:y[r]=dot_f16(reinterpret_cast<const uint16_t*>(p),x,cols);break;case TensorType::Q8_0:y[r]=dot_q8(p,x,cols);break;case TensorType::Q4_0:y[r]=dot_q4(p,x,cols);break;default:throw std::runtime_error("matvec tensor type not supported");}}
+}
+}
+
+void matvec(const TensorInfo&t,std::span<const std::byte>b,const float*x,float*y){
+    const auto mode=g_device.load(std::memory_order_relaxed);
+    const bool use_cuda=mode==DeviceMode::Cuda || (mode==DeviceMode::Auto && cuda_available());
+    if(use_cuda) cuda_backend::matvec(t,b,x,y);
+    else matvec_cpu(t,b,x,y);
 }
 void embedding_row(const TensorInfo&t,std::span<const std::byte>b,uint32_t row,float*out){
     if(t.shape.size()!=2||row>=t.shape[1])throw std::runtime_error("bad embedding row");size_t n=t.shape[0];uint64_t rb=tensor_nbytes(t.type,n);const std::byte*p=b.data()+uint64_t(row)*rb;
