@@ -4,9 +4,19 @@ from pathlib import Path
 from ._hub import parse_hf_source, select_gguf, select_tokenizer_sidecar
 
 try:
-    from ._core import Model as _NativeModel, ModelConfig, SchemaReport, GenerationConfig
+    from ._core import (
+        Model as _NativeModel,
+        ModelConfig,
+        SchemaReport,
+        GenerationConfig,
+        set_device as _set_device,
+        device as _device,
+        cuda_available as _cuda_available,
+        cuda_device_name as _cuda_device_name,
+    )
 except ImportError as exc:
     _NativeModel = ModelConfig = SchemaReport = GenerationConfig = None
+    _set_device = _device = _cuda_available = _cuda_device_name = None
     _CORE_IMPORT_ERROR = exc
 else:
     _CORE_IMPORT_ERROR = None
@@ -17,29 +27,43 @@ def _require_core() -> None:
         raise RuntimeError("nedo.cpp native extension is not installed. Run `pip install .` or install a wheel.") from _CORE_IMPORT_ERROR
 
 
+def cuda_available() -> bool:
+    _require_core()
+    return bool(_cuda_available())
+
+
+def cuda_device_name() -> str:
+    _require_core()
+    return str(_cuda_device_name())
+
+
+def active_device() -> str:
+    _require_core()
+    return str(_device())
+
+
 def _surface_tokenizer(path: Path):
     try:
         from nedotokenizer import SurfaceTokenizer
     except ImportError as exc:
         raise RuntimeError(
             "Exact NDSRF004 tokenization requires Ethosoft NedoTokenizer. "
-            "Install it from https://github.com/ethosoftai/NedoTokenizer before loading NedoLM."
+            "Reinstall `nedo-cpp` to restore dependencies."
         ) from exc
     return SurfaceTokenizer(path.read_bytes())
 
 
 class Model:
-    """Public NedoLM model wrapper.
+    """Public NedoLM model wrapper with canonical NDSRF004 tokenization."""
 
-    Transformer inference stays in the C++ core. NDSRF004 text segmentation is
-    delegated to the canonical Ethosoft NedoTokenizer implementation so the
-    public Python API never uses an approximate morphology scanner.
-    """
-
-    def __init__(self, model_path: str | Path, tokenizer_path: str | Path):
+    def __init__(self, model_path: str | Path, tokenizer_path: str | Path, *, device: str = "auto"):
         _require_core()
+        if device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("device must be one of: auto, cpu, cuda")
         self.model_path = Path(model_path)
         self.tokenizer_path = Path(tokenizer_path)
+        self._device_request = device
+        _set_device(device)
         self._native = _NativeModel(self.model_path)
         self._tokenizer = _surface_tokenizer(self.tokenizer_path)
 
@@ -51,8 +75,16 @@ class Model:
     def schema(self):
         return self._native.schema
 
+    @property
+    def device(self) -> str:
+        _set_device(self._device_request)
+        return str(_device())
+
     def summary(self) -> str:
-        return self._native.summary() + "\ntokenizer: canonical NDSRF004 (Ethosoft/NedoTokenizer)"
+        _set_device(self._device_request)
+        actual = str(_device())
+        detail = f" ({_cuda_device_name()})" if actual == "cuda" and _cuda_device_name() else ""
+        return self._native.summary() + "\ntokenizer: canonical NDSRF004 (Ethosoft/NedoTokenizer)" + f"\ndevice: {actual}{detail}"
 
     def tokenize(self, text: str, add_bos: bool = False) -> list[int]:
         ids = [int(value) for value in self._tokenizer.encode_ids(text.encode("utf-8"))]
@@ -67,6 +99,7 @@ class Model:
     def generate_ids(self, prompt_ids: list[int], config=None) -> list[int]:
         if config is None:
             config = GenerationConfig()
+        _set_device(self._device_request)
         return [int(value) for value in self._native.generate_ids([int(v) for v in prompt_ids], config)]
 
     def generate(self, prompt: str, config=None) -> str:
@@ -77,13 +110,10 @@ class Model:
         return self.detokenize(generated)
 
     def generate_stream(self, prompt: str, config=None, on_text=None) -> str:
-        """Generate once while delivering decoded UTF-8 text as soon as tokens arrive.
-
-        ``on_text`` receives plain text chunks. The returned value is the complete
-        generated text, preserving the non-streaming ``generate`` API.
-        """
+        """Generate once while delivering decoded UTF-8 text as soon as tokens arrive."""
         if config is None:
             config = GenerationConfig()
+        _set_device(self._device_request)
         prompt_ids = self.tokenize(prompt, add_bos=False)
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         chunks: list[str] = []
@@ -138,13 +168,11 @@ def _local_tokenizer_sidecar(model_path: Path) -> Path:
     files = [item.name for item in model_path.parent.iterdir() if item.is_file()]
     sidecar = select_tokenizer_sidecar(files, model_path.name)
     if sidecar is None:
-        raise FileNotFoundError(
-            f"No surface-vocab*.bin tokenizer sidecar found next to local model {model_path}"
-        )
+        raise FileNotFoundError(f"No surface-vocab*.bin tokenizer sidecar found next to local model {model_path}")
     return model_path.parent / sidecar
 
 
-def import_llm(model: str | Path, *, filename: str | None = None, quantization: str | None = None, cache_dir: str | Path | None = None, revision: str | None = None):
+def import_llm(model: str | Path, *, filename: str | None = None, quantization: str | None = None, cache_dir: str | Path | None = None, revision: str | None = None, device: str = "auto"):
     _require_core()
     raw = str(model)
     p = Path(raw).expanduser()
@@ -153,8 +181,12 @@ def import_llm(model: str | Path, *, filename: str | None = None, quantization: 
         tokenizer_path = _local_tokenizer_sidecar(model_path)
     else:
         model_path, tokenizer_path = _hf_download_bundle(raw, filename=filename, quantization=quantization, cache_dir=cache_dir, revision=revision)
-    return Model(model_path, tokenizer_path)
+    return Model(model_path, tokenizer_path, device=device)
 
 
 load = import_llm
-__all__ = ["Model", "ModelConfig", "SchemaReport", "GenerationConfig", "hf_download", "import_llm", "load"]
+__all__ = [
+    "Model", "ModelConfig", "SchemaReport", "GenerationConfig",
+    "hf_download", "import_llm", "load",
+    "cuda_available", "cuda_device_name", "active_device",
+]
