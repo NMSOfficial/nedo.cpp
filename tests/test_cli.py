@@ -1,4 +1,4 @@
-from nedo.cli import _build_prompt, build_parser
+from nedo.cli import _build_prompt, _generation_config, build_parser
 
 
 def test_first_turn_prompt_uses_exact_sft_input_adapter():
@@ -24,10 +24,16 @@ def test_history_stays_inside_optional_input_and_is_bounded():
     assert p.count("Asistan cevabı:") == 1
 
 
-def test_chat_defaults_match_nedolm_repetition_controls():
+def test_chat_defaults_reach_native_generation_config():
     args = build_parser().parse_args(["chat", "Ethosoft/NedoLM-0.8B-SFT-6478-GGUF"])
     assert args.temperature == 0.0
     assert args.max_tokens == 128
     assert args.device == "auto"
     assert args.repetition_penalty == 1.15
     assert args.no_repeat_ngram_size == 4
+
+    cfg = _generation_config(args)
+    assert cfg.temperature == 0.0
+    assert cfg.max_new_tokens == 128
+    assert cfg.repetition_penalty == 1.15
+    assert cfg.no_repeat_ngram_size == 4
