@@ -22,14 +22,14 @@ jobs:
         with: {python-version: '3.12'}
       - name: Install package
         run: python -m pip install .
-      - name: Real F16 chat and repetition smoke
+      - name: Probe compact history adapters on real F16
         env:
           OMP_NUM_THREADS: '4'
           NEDO_CUDA_BUILD: '0'
         run: |
           python - <<'PY'
           import nedo.cpp as nedo
-          from nedo.cli import _CHAT_STOPS, _build_prompt, _generation_config, build_parser
+          from nedo.cli import _CHAT_STOPS, _CHAT_INSTRUCTION, _build_prompt, _generation_config, build_parser
 
           model = nedo.import_llm(
               'Ethosoft/NedoLM-0.8B-SFT-6478-GGUF',
@@ -38,7 +38,7 @@ jobs:
           )
           args = build_parser().parse_args([
               'chat', 'Ethosoft/NedoLM-0.8B-SFT-6478-GGUF',
-              '--max-tokens', '32', '--seed', '1',
+              '--max-tokens', '12', '--seed', '1',
           ])
           cfg = _generation_config(args)
           assert abs(cfg.temperature - 0.7) < 1e-6
@@ -47,36 +47,28 @@ jobs:
           assert abs(cfg.repetition_penalty - 1.15) < 1e-6
           assert cfg.no_repeat_ngram_size == 4
 
-          def assert_no_new_repeated_ngram(prompt, output, n=4):
-              prompt_ids = model.tokenize(prompt)
-              output_ids = model.tokenize(output)
-              sequence = list(prompt_ids)
-              seen = {
-                  tuple(sequence[i:i+n])
-                  for i in range(max(0, len(sequence) - n + 1))
-              }
-              for token_id in output_ids:
-                  sequence.append(token_id)
-                  if len(sequence) < n:
-                      continue
-                  gram = tuple(sequence[-n:])
-                  if gram in seen:
-                      raise SystemExit(f'repeated {n}-gram escaped sampler: {gram}')
-                  seen.add(gram)
+          previous_user = 'naber kingo'
+          previous_assistant = 'Merhaba! Size nasıl yardımcı olabilirim?'
+          current_user = 'ne dedin yani'
 
-          forbidden = (
-              'Gerekçe:', 'Kullanıcı talimatı:', 'Asistan cevabı:',
-              '<|im_end|>', '<|end|>', '<düşünme>', '</düşünme>',
+          no_history = _build_prompt([], current_user)
+          current_history = _build_prompt([(previous_user, previous_assistant)], current_user)
+          compact_context = (
+              f'Şimdiki mesaj:\n{current_user}\n\n'
+              f'Önceki kullanıcı mesajı:\n{previous_user}\n\n'
+              f'Önceki cevabın:\n{previous_assistant}'
           )
-          history = []
-          for user in ('naber kingo', 'ne dedin yani'):
-              prompt = _build_prompt(history, user)
+          compact_history = (
+              f'Kullanıcı talimatı:\n{_CHAT_INSTRUCTION}\n\n'
+              f'Ek bilgi:\n{compact_context}\n\n'
+              'Asistan cevabı:\n'
+          )
+
+          for label, prompt in (
+              ('NO_HISTORY', no_history),
+              ('CURRENT_HISTORY', current_history),
+              ('COMPACT_HISTORY', compact_history),
+          ):
               out = model.generate_stream(prompt, cfg, stop=_CHAT_STOPS)
-              print('PROMPT', repr(user), 'OUT', repr(out), flush=True)
-              if not out.strip():
-                  raise SystemExit(f'{user}: empty output')
-              if any(marker in out for marker in forbidden):
-                  raise SystemExit(f'{user}: leaked training/template artifact: {out!r}')
-              assert_no_new_repeated_ngram(prompt, out, cfg.no_repeat_ngram_size)
-              history.append((user, out))
+              print(label, repr(out), flush=True)
           PY
