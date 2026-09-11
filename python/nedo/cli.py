@@ -24,7 +24,13 @@ def _generation_config(args: argparse.Namespace):
 
 
 def chat(args: argparse.Namespace) -> int:
-    model = nedo.import_llm(args.model, filename=args.filename, quantization=args.quantization, revision=args.revision)
+    model = nedo.import_llm(
+        args.model,
+        filename=args.filename,
+        quantization=args.quantization,
+        revision=args.revision,
+        device=args.device,
+    )
     cfg = _generation_config(args)
     history: list[tuple[str, str]] = []
     if not args.quiet:
@@ -72,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--quantization", choices=["Q4_0", "Q8_0", "F16"])
     p.add_argument("--filename")
     p.add_argument("--revision")
+    p.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto", help="Compute device; auto prefers CUDA when available")
     p.add_argument("--max-tokens", type=int, default=256)
     p.add_argument("--temperature", type=float, default=0.8)
     p.add_argument("--top-p", type=float, default=0.95)
