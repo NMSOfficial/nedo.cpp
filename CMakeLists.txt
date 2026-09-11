@@ -31,6 +31,17 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Arch installs the toolkit under /opt/cuda and many local CUDA installs use
+# /usr/local/cuda. CMake's compiler probe primarily follows PATH, so provide
+# deterministic hints without requiring users to edit shell startup files.
+if(NEDO_CUDA AND NOT DEFINED CMAKE_CUDA_COMPILER AND NOT DEFINED ENV{CUDACXX})
+  if(EXISTS "/opt/cuda/bin/nvcc")
+    set(CMAKE_CUDA_COMPILER "/opt/cuda/bin/nvcc" CACHE FILEPATH "CUDA compiler" FORCE)
+  elseif(EXISTS "/usr/local/cuda/bin/nvcc")
+    set(CMAKE_CUDA_COMPILER "/usr/local/cuda/bin/nvcc" CACHE FILEPATH "CUDA compiler" FORCE)
+  endif()
+endif()
+
 set(NEDO_CUDA_ENABLED OFF)
 if(NEDO_CUDA)
   include(CheckLanguage)
