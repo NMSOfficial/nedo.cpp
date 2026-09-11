@@ -41,6 +41,9 @@ jobs:
               '--max-tokens', '32', '--seed', '1',
           ])
           cfg = _generation_config(args)
+          assert abs(cfg.temperature - 0.7) < 1e-6
+          assert abs(cfg.top_p - 0.9) < 1e-6
+          assert cfg.top_k == 0
           assert abs(cfg.repetition_penalty - 1.15) < 1e-6
           assert cfg.no_repeat_ngram_size == 4
 
