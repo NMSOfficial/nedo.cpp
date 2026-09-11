@@ -35,5 +35,5 @@ def test_chat_defaults_reach_native_generation_config():
     cfg = _generation_config(args)
     assert cfg.temperature == 0.0
     assert cfg.max_new_tokens == 128
-    assert cfg.repetition_penalty == 1.15
+    assert abs(cfg.repetition_penalty - 1.15) < 1e-6
     assert cfg.no_repeat_ngram_size == 4
