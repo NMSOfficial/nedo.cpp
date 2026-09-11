@@ -1,10 +1,11 @@
 from nedo.cli import _build_prompt, build_parser
 
 
-def test_first_turn_prompt_uses_sft_input_adapter():
+def test_first_turn_prompt_uses_exact_sft_input_adapter():
     p = _build_prompt([], "Merhaba")
-    assert p.startswith("Kullanıcı talimatı:\nAşağıdaki kullanıcının son mesajına doğal, kısa ve doğrudan Türkçe yanıt ver.")
-    assert "\n\nEk bilgi:\nSon kullanıcı mesajı:\nMerhaba\n\nAsistan cevabı:\n" in p
+    assert p.startswith("Kullanıcı talimatı:\nKullanıcının şu mesajına doğal, kısa ve doğrudan Türkçe yanıt ver.")
+    assert "\n\nEk bilgi:\nMerhaba\n\nAsistan cevabı:\n" in p
+    assert "Son kullanıcı mesajı:" not in p
     assert p.count("Kullanıcı talimatı:") == 1
     assert p.count("Asistan cevabı:") == 1
 
@@ -23,8 +24,10 @@ def test_history_stays_inside_optional_input_and_is_bounded():
     assert p.count("Asistan cevabı:") == 1
 
 
-def test_chat_defaults_to_deterministic_greedy_and_bounded_output():
+def test_chat_defaults_match_nedolm_repetition_controls():
     args = build_parser().parse_args(["chat", "Ethosoft/NedoLM-0.8B-SFT-6478-GGUF"])
     assert args.temperature == 0.0
     assert args.max_tokens == 128
     assert args.device == "auto"
+    assert args.repetition_penalty == 1.15
+    assert args.no_repeat_ngram_size == 4
