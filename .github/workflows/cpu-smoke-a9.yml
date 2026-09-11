@@ -27,7 +27,9 @@ jobs:
           m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16', device='cpu')
           c = nedo.GenerationConfig(); c.max_new_tokens=48; c.temperature=0.0; c.seed=1
           for user in ('merhaba','naber kingo','ne dedin yani'):
-              p = f'Kullanıcı talimatı:\n{user}\n\nAsistan cevabı:\n'
-              out = m.generate(p,c)
-              print('PROMPT',repr(user)); print('OUT',repr(out),flush=True)
+              raw = f'Kullanıcı talimatı:\n{user}\n\nAsistan cevabı:\n'
+              wrapped = f'Kullanıcı talimatı:\nKullanıcının şu mesajına doğal, kısa ve doğrudan Türkçe yanıt ver: {user}\n\nAsistan cevabı:\n'
+              print('PROMPT',repr(user),flush=True)
+              print('RAW',repr(m.generate(raw,c)),flush=True)
+              print('WRAPPED',repr(m.generate(wrapped,c)),flush=True)
           PY
