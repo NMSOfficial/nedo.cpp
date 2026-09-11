@@ -3,6 +3,10 @@ on:
   push:
     branches: [cuda-a9]
     paths:
+      - 'python/nedo/cli.py'
+      - 'python/nedo/cpp.py'
+      - 'src/model.cpp'
+      - 'src/kernels.cpp'
       - 'cpu-smoke-a9.stamp'
       - '.github/workflows/cpu-smoke-a9.yml'
 permissions:
@@ -17,19 +21,22 @@ jobs:
         with: {python-version: '3.12'}
       - name: Install package
         run: python -m pip install .
-      - name: Real F16 CPU behavior
+      - name: Real F16 chat-adapter smoke
         env:
           OMP_NUM_THREADS: '4'
           NEDO_CUDA_BUILD: '0'
         run: |
           python - <<'PY'
           import nedo.cpp as nedo
+          from nedo.cli import _build_prompt, _CHAT_STOPS
           m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16', device='cpu')
-          c = nedo.GenerationConfig(); c.max_new_tokens=12; c.temperature=0.0; c.seed=1
+          c = nedo.GenerationConfig(); c.max_new_tokens=16; c.temperature=0.0; c.seed=1
+          history=[]
           for user in ('merhaba','naber kingo'):
-              raw = f'Kullanıcı talimatı:\n{user}\n\nAsistan cevabı:\n'
-              wrapped = f'Kullanıcı talimatı:\nKullanıcının şu mesajına doğal, kısa ve doğrudan Türkçe yanıt ver. Yalnızca cevabı yaz.\n\nEk bilgi:\n{user}\n\nAsistan cevabı:\n'
-              print('PROMPT',repr(user),flush=True)
-              print('RAW',repr(m.generate(raw,c)),flush=True)
-              print('WRAPPED',repr(m.generate(wrapped,c)),flush=True)
+              out = m.generate_stream(_build_prompt(history,user), c, stop=_CHAT_STOPS)
+              print('PROMPT',repr(user),'OUT',repr(out),flush=True)
+              if not out.strip(): raise SystemExit(f'{user}: empty output')
+              forbidden=('Gerekçe:','Kullanıcı talimatı:','Asistan cevabı:','<|im_end|>','<|end|>','<düşünme>','</düşünme>')
+              if any(x in out for x in forbidden): raise SystemExit(f'{user}: leaked training/template artifact: {out!r}')
+              history.append((user,out))
           PY
