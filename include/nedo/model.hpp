@@ -16,10 +16,10 @@ struct ModelConfig {
 };
 struct GenerationConfig {
     uint32_t max_new_tokens=128;
-    float temperature=0.8f,top_p=0.95f;
-    uint32_t top_k=40;
-    float repetition_penalty=1.0f;
-    uint32_t no_repeat_ngram_size=0;
+    float temperature=0.7f,top_p=0.9f;
+    uint32_t top_k=0;
+    float repetition_penalty=1.15f;
+    uint32_t no_repeat_ngram_size=4;
     uint64_t seed=0;
     bool add_bos=false;
 };
