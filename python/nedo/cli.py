@@ -80,7 +80,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--revision")
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto", help="Compute device; auto prefers CUDA when available")
     p.add_argument("--max-tokens", type=int, default=256)
-    p.add_argument("--temperature", type=float, default=0.8)
+    # Keep the REPL deterministic by default. The current sampler has no
+    # repetition penalty or chat stop-sequence handling yet, so stochastic
+    # decoding can easily fall into template/newline loops on this small SFT.
+    p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--top-p", type=float, default=0.95)
     p.add_argument("--top-k", type=int, default=40)
     p.add_argument("--seed", type=int, default=0)
