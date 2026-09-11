@@ -19,27 +19,25 @@ _CHAT_STOPS = (
 )
 
 _CHAT_INSTRUCTION = (
-    "Aşağıdaki kullanıcının son mesajına doğal, kısa ve doğrudan Türkçe yanıt ver. "
-    "Yalnızca cevabı yaz; gerekçe, açıklama, rol etiketi veya düşünme metni ekleme."
+    "Kullanıcının şu mesajına doğal, kısa ve doğrudan Türkçe yanıt ver. "
+    "Yalnızca cevabı yaz."
 )
 _MAX_HISTORY_TURNS = 4
 
 
 def _build_prompt(history: list[tuple[str, str]], user_text: str) -> str:
     # NedoLM SFT is instruction+optional-input tuning, not role-based multi-turn
-    # chat. Keep a stable instruction and put the actual chat transcript in the
-    # trained `Ek bilgi:` field. This avoids treating colloquial messages such
-    # as "naber kingo" as task descriptions.
-    context: list[str] = []
-    if history:
-        context.append("Önceki konuşma:")
+    # chat. The first turn deliberately keeps Ek bilgi equal to the user text;
+    # this is the prompt shape validated against the real F16 checkpoint.
+    if not history:
+        context_text = user_text
+    else:
+        context: list[str] = ["Önceki konuşma:"]
         for user, assistant in history[-_MAX_HISTORY_TURNS:]:
             context.append(f"Kullanıcı: {user}")
             context.append(f"Asistan: {assistant.strip()}")
-        context.append("")
-    context.append("Son kullanıcı mesajı:")
-    context.append(user_text)
-    context_text = "\n".join(context)
+        context.extend(("", "Son kullanıcı mesajı:", user_text))
+        context_text = "\n".join(context)
     return (
         f"Kullanıcı talimatı:\n{_CHAT_INSTRUCTION}\n\n"
         f"Ek bilgi:\n{context_text}\n\n"
@@ -53,6 +51,8 @@ def _generation_config(args: argparse.Namespace):
     cfg.temperature = args.temperature
     cfg.top_p = args.top_p
     cfg.top_k = args.top_k
+    cfg.repetition_penalty = args.repetition_penalty
+    cfg.no_repeat_ngram_size = args.no_repeat_ngram_size
     cfg.seed = args.seed
     return cfg
 
@@ -117,6 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--top-p", type=float, default=0.95)
     p.add_argument("--top-k", type=int, default=40)
+    p.add_argument("--repetition-penalty", type=float, default=1.15, help="Penalize tokens already present in the active sequence")
+    p.add_argument("--no-repeat-ngram-size", type=int, default=4, help="Block repeated token n-grams; 0 disables")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--quiet", action="store_true", help="Hide model metadata/status; responses stay raw text")
     p.set_defaults(func=chat)
