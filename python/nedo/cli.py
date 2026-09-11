@@ -39,9 +39,10 @@ def _build_prompt(history: list[tuple[str, str]], user_text: str) -> str:
         context.append("")
     context.append("Son kullanıcı mesajı:")
     context.append(user_text)
+    context_text = "\n".join(context)
     return (
         f"Kullanıcı talimatı:\n{_CHAT_INSTRUCTION}\n\n"
-        f"Ek bilgi:\n{'\n'.join(context)}\n\n"
+        f"Ek bilgi:\n{context_text}\n\n"
         "Asistan cevabı:\n"
     )
 
