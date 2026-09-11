@@ -41,7 +41,7 @@ jobs:
               '--max-tokens', '32', '--seed', '1',
           ])
           cfg = _generation_config(args)
-          assert cfg.repetition_penalty == 1.15
+          assert abs(cfg.repetition_penalty - 1.15) < 1e-6
           assert cfg.no_repeat_ngram_size == 4
 
           def assert_no_new_repeated_ngram(prompt, output, n=4):
