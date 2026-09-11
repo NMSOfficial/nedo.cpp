@@ -1,0 +1,33 @@
+name: cpu-smoke-a9
+on:
+  push:
+    branches: [cuda-a9]
+    paths:
+      - 'cpu-smoke-a9.stamp'
+      - '.github/workflows/cpu-smoke-a9.yml'
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install package
+        run: python -m pip install .
+      - name: Real F16 CPU behavior
+        env:
+          OMP_NUM_THREADS: '4'
+          NEDO_CUDA_BUILD: '0'
+        run: |
+          python - <<'PY'
+          import nedo.cpp as nedo
+          m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16', device='cpu')
+          c = nedo.GenerationConfig(); c.max_new_tokens=48; c.temperature=0.0; c.seed=1
+          for user in ('merhaba','naber kingo','ne dedin yani'):
+              p = f'Kullanıcı talimatı:\n{user}\n\nAsistan cevabı:\n'
+              out = m.generate(p,c)
+              print('PROMPT',repr(user)); print('OUT',repr(out),flush=True)
+          PY
