@@ -53,6 +53,50 @@ def _surface_tokenizer(path: Path):
     return SurfaceTokenizer(path.read_bytes())
 
 
+class _StopTextBuffer:
+    """Hold a short suffix so stop strings never leak to streamed stdout."""
+
+    def __init__(self, stops, emit):
+        self.stops = tuple(s for s in (stops or ()) if s)
+        self.emit = emit
+        self.pending = ""
+        self.stopped = False
+        self.keep = max((len(s) for s in self.stops), default=0) - 1
+
+    def _write(self, text: str) -> None:
+        if text:
+            self.emit(text)
+
+    def feed(self, text: str) -> bool:
+        if not text or self.stopped:
+            return self.stopped
+        self.pending += text
+        hit = None
+        for stop in self.stops:
+            idx = self.pending.find(stop)
+            if idx >= 0 and (hit is None or idx < hit):
+                hit = idx
+        if hit is not None:
+            self._write(self.pending[:hit])
+            self.pending = ""
+            self.stopped = True
+            return True
+
+        if self.keep <= 0:
+            self._write(self.pending)
+            self.pending = ""
+        elif len(self.pending) > self.keep:
+            safe = len(self.pending) - self.keep
+            self._write(self.pending[:safe])
+            self.pending = self.pending[safe:]
+        return False
+
+    def finish(self) -> None:
+        if not self.stopped:
+            self._write(self.pending)
+        self.pending = ""
+
+
 class Model:
     """Public NedoLM model wrapper with canonical NDSRF004 tokenization."""
 
@@ -109,8 +153,8 @@ class Model:
         generated = self.generate_ids(prompt_ids, config)
         return self.detokenize(generated)
 
-    def generate_stream(self, prompt: str, config=None, on_text=None) -> str:
-        """Generate once while delivering decoded UTF-8 text as soon as tokens arrive."""
+    def generate_stream(self, prompt: str, config=None, on_text=None, stop=None) -> str:
+        """Generate once, stream UTF-8 text, and abort native generation on stop strings."""
         if config is None:
             config = GenerationConfig()
         _set_device(self._device_request)
@@ -118,20 +162,34 @@ class Model:
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         chunks: list[str] = []
 
+        def emit_visible(text: str) -> None:
+            if not text:
+                return
+            chunks.append(text)
+            if on_text is not None:
+                on_text(text)
+
+        stopper = _StopTextBuffer(stop, emit_visible)
+
         def on_token(token_id: int) -> None:
             raw = bytes(self._tokenizer.decode_ids([int(token_id)]))
             text = decoder.decode(raw, final=False)
-            if text:
-                chunks.append(text)
-                if on_text is not None:
-                    on_text(text)
+            if stopper.feed(text):
+                # pybind propagates the callback exception through the native
+                # generation loop, so generation actually stops instead of
+                # merely hiding subsequent text on stdout.
+                raise RuntimeError("__nedo_stop_sequence__")
 
-        self._native.generate_ids_stream(prompt_ids, config, on_token)
-        tail = decoder.decode(b"", final=True)
-        if tail:
-            chunks.append(tail)
-            if on_text is not None:
-                on_text(tail)
+        try:
+            self._native.generate_ids_stream(prompt_ids, config, on_token)
+        except Exception:
+            if not stopper.stopped:
+                raise
+
+        if not stopper.stopped:
+            tail = decoder.decode(b"", final=True)
+            stopper.feed(tail)
+            stopper.finish()
         return "".join(chunks)
 
     @property
