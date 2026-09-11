@@ -8,6 +8,10 @@ from . import cpp as nedo
 _CHAT_STOPS = (
     "</düşünme>",
     "<düşünme>",
+    "<|im_end|>",
+    "<|end|>",
+    "<|eot_id|>",
+    "<|endoftext|>",
     "\nKullanıcı talimatı:",
     "Kullanıcı talimatı:",
     "\nAsistan cevabı:",
