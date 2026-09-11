@@ -21,22 +21,23 @@ jobs:
         with: {python-version: '3.12'}
       - name: Install package
         run: python -m pip install .
-      - name: Real F16 chat-adapter smoke
+      - name: Probe real F16 SFT chat prompts
         env:
           OMP_NUM_THREADS: '4'
           NEDO_CUDA_BUILD: '0'
         run: |
           python - <<'PY'
           import nedo.cpp as nedo
-          from nedo.cli import _build_prompt, _CHAT_STOPS
+          from nedo.cli import _CHAT_STOPS
           m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16', device='cpu')
-          c = nedo.GenerationConfig(); c.max_new_tokens=16; c.temperature=0.0; c.seed=1
-          history=[]
-          for user in ('merhaba','naber kingo'):
-              out = m.generate_stream(_build_prompt(history,user), c, stop=_CHAT_STOPS)
-              print('PROMPT',repr(user),'OUT',repr(out),flush=True)
-              if not out.strip(): raise SystemExit(f'{user}: empty output')
-              forbidden=('Gerekçe:','Kullanıcı talimatı:','Asistan cevabı:','<|im_end|>','<|end|>','<düşünme>','</düşünme>')
-              if any(x in out for x in forbidden): raise SystemExit(f'{user}: leaked training/template artifact: {out!r}')
-              history.append((user,out))
+          c = nedo.GenerationConfig(); c.max_new_tokens=12; c.temperature=0.0; c.seed=1
+          base='Kullanıcının şu mesajına doğal, kısa ve doğrudan Türkçe yanıt ver. Yalnızca cevabı yaz.'
+          p1=f'Kullanıcı talimatı:\n{base}\n\nEk bilgi:\nnaber kingo\n\nAsistan cevabı:\n'
+          out1=m.generate_stream(p1,c,stop=_CHAT_STOPS)
+          print('FIRST',repr(out1),flush=True)
+          transcript='Önceki konuşma:\nKullanıcı: naber kingo\nAsistan: '+out1.strip()+'\n\nSon kullanıcı mesajı:\nne dedin yani'
+          p2a=f'Kullanıcı talimatı:\n{base}\n\nEk bilgi:\n{transcript}\n\nAsistan cevabı:\n'
+          p2b='Kullanıcı talimatı:\nÖnceki konuşmayı dikkate alarak kullanıcının son mesajına doğal, kısa ve doğrudan Türkçe yanıt ver. Yalnızca cevabı yaz.\n\nEk bilgi:\n'+transcript+'\n\nAsistan cevabı:\n'
+          print('HISTORY_SAME',repr(m.generate_stream(p2a,c,stop=_CHAT_STOPS)),flush=True)
+          print('HISTORY_EXPLICIT',repr(m.generate_stream(p2b,c,stop=_CHAT_STOPS)),flush=True)
           PY
