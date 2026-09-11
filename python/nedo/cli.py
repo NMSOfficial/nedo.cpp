@@ -5,12 +5,29 @@ import sys
 from . import cpp as nedo
 
 
+_CHAT_STOPS = (
+    "</düşünme>",
+    "<düşünme>",
+    "\nKullanıcı talimatı:",
+    "Kullanıcı talimatı:",
+    "\nAsistan cevabı:",
+    "Asistan cevabı:",
+)
+
+
 def _build_prompt(history: list[tuple[str, str]], user_text: str) -> str:
-    parts: list[str] = []
-    for user, assistant in history:
-        parts.append(f"Kullanıcı talimatı:\n{user}\n\nAsistan cevabı:\n{assistant}")
-    parts.append(f"Kullanıcı talimatı:\n{user_text}\n\nAsistan cevabı:\n")
-    return "\n\n".join(parts)
+    # NEDO SFT was trained as one instruction plus optional `Ek bilgi:` input,
+    # not as repeated chat-role blocks. Preserve conversational context inside
+    # the trained optional-input field so old assistant headers do not become
+    # generation targets.
+    prompt = f"Kullanıcı talimatı:\n{user_text}"
+    if history:
+        turns: list[str] = []
+        for user, assistant in history:
+            answer = assistant.strip()
+            turns.append(f"Kullanıcı: {user}\nAsistan: {answer}")
+        prompt += "\n\nEk bilgi:\nÖnceki konuşma:\n" + "\n\n".join(turns)
+    return prompt + "\n\nAsistan cevabı:\n"
 
 
 def _generation_config(args: argparse.Namespace):
@@ -59,7 +76,7 @@ def chat(args: argparse.Namespace) -> int:
             def emit(chunk: str) -> None:
                 sys.stdout.write(chunk)
                 sys.stdout.flush()
-            text = model.generate_stream(prompt, cfg, on_text=emit)
+            text = model.generate_stream(prompt, cfg, on_text=emit, stop=_CHAT_STOPS)
         except RuntimeError as exc:
             print(f"nedo.cpp generation hatası: {exc}", file=sys.stderr)
             return 2
@@ -80,9 +97,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--revision")
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto", help="Compute device; auto prefers CUDA when available")
     p.add_argument("--max-tokens", type=int, default=256)
-    # Keep the REPL deterministic by default. The current sampler has no
-    # repetition penalty or chat stop-sequence handling yet, so stochastic
-    # decoding can easily fall into template/newline loops on this small SFT.
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--top-p", type=float, default=0.95)
     p.add_argument("--top-k", type=int, default=40)
