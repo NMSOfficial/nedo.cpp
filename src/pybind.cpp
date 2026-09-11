@@ -1,4 +1,5 @@
 #include "nedo/model.hpp"
+#include "nedo/kernels.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl/filesystem.h>
@@ -6,6 +7,10 @@
 namespace py=pybind11;
 PYBIND11_MODULE(_core,m){
     m.doc()="NedoLM native GGUF runtime core";
+    m.def("set_device",[](const std::string& device){ nedo::kernels::set_device(device); });
+    m.def("device",[](){ return nedo::kernels::device(); });
+    m.def("cuda_available",[](){ return nedo::kernels::cuda_available(); });
+    m.def("cuda_device_name",[](){ return nedo::kernels::cuda_device_name(); });
     py::class_<nedo::GenerationConfig>(m,"GenerationConfig").def(py::init<>()).def_readwrite("max_new_tokens",&nedo::GenerationConfig::max_new_tokens).def_readwrite("temperature",&nedo::GenerationConfig::temperature).def_readwrite("top_p",&nedo::GenerationConfig::top_p).def_readwrite("top_k",&nedo::GenerationConfig::top_k).def_readwrite("seed",&nedo::GenerationConfig::seed).def_readwrite("add_bos",&nedo::GenerationConfig::add_bos);
     py::class_<nedo::ModelConfig>(m,"ModelConfig").def_readonly("vocab",&nedo::ModelConfig::vocab).def_readonly("dim",&nedo::ModelConfig::dim).def_readonly("layers",&nedo::ModelConfig::layers).def_readonly("heads",&nedo::ModelConfig::heads).def_readonly("kv_heads",&nedo::ModelConfig::kv_heads).def_readonly("head_dim",&nedo::ModelConfig::head_dim).def_readonly("ffn",&nedo::ModelConfig::ffn).def_readonly("context",&nedo::ModelConfig::context).def_readonly("sliding",&nedo::ModelConfig::sliding);
     py::class_<nedo::SchemaReport>(m,"SchemaReport").def_readonly("architecture_ok",&nedo::SchemaReport::architecture_ok).def_readonly("standard_tensors_ok",&nedo::SchemaReport::standard_tensors_ok).def_readonly("morph_tensors",&nedo::SchemaReport::morph_tensors).def_readonly("morph_names",&nedo::SchemaReport::morph_names).def_readonly("missing",&nedo::SchemaReport::missing).def_readonly("unmatched",&nedo::SchemaReport::unmatched).def_readonly("router_contract",&nedo::SchemaReport::router_contract);
