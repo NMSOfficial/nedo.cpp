@@ -26,17 +26,19 @@ jobs:
           sub-packages: '["nvcc", "cudart-dev"]'
       - name: CUDA compiler
         run: nvcc --version
-      - name: Configure CUDA core
+      - name: Configure CUDA core for Ampere sm_86
         env:
           NEDO_CUDA_BUILD: '1'
+          NEDO_CUDA_ARCH: '86'
         run: cmake -S . -B build -DNEDO_BUILD_PYTHON=OFF -DNEDO_BUILD_TESTS=ON -DNEDO_NATIVE=OFF
       - name: Build CUDA core
         run: cmake --build build -j2
       - name: CPU fallback tests in CUDA build
         run: ctest --test-dir build --output-on-failure
-      - name: Build and install CUDA Python extension
+      - name: Build and install sm_86 CUDA Python extension
         env:
           NEDO_CUDA_BUILD: '1'
+          NEDO_CUDA_ARCH: '86'
         run: python -m pip install .
       - name: Import CUDA-enabled extension without GPU
         run: |
