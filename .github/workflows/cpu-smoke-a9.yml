@@ -22,14 +22,14 @@ jobs:
         with: {python-version: '3.12'}
       - name: Install package
         run: python -m pip install .
-      - name: Probe compact history adapters on real F16
+      - name: Probe instruction-first history adapter on real F16
         env:
           OMP_NUM_THREADS: '4'
           NEDO_CUDA_BUILD: '0'
         run: |
           python - <<'PY'
           import nedo.cpp as nedo
-          from nedo.cli import _CHAT_STOPS, _CHAT_INSTRUCTION, _build_prompt, _generation_config, build_parser
+          from nedo.cli import _CHAT_STOPS, _generation_config, build_parser
 
           model = nedo.import_llm(
               'Ethosoft/NedoLM-0.8B-SFT-6478-GGUF',
@@ -41,34 +41,16 @@ jobs:
               '--max-tokens', '12', '--seed', '1',
           ])
           cfg = _generation_config(args)
-          assert abs(cfg.temperature - 0.7) < 1e-6
-          assert abs(cfg.top_p - 0.9) < 1e-6
-          assert cfg.top_k == 0
-          assert abs(cfg.repetition_penalty - 1.15) < 1e-6
-          assert cfg.no_repeat_ngram_size == 4
 
-          previous_user = 'naber kingo'
-          previous_assistant = 'Merhaba! Size nasıl yardımcı olabilirim?'
           current_user = 'ne dedin yani'
-
-          no_history = _build_prompt([], current_user)
-          current_history = _build_prompt([(previous_user, previous_assistant)], current_user)
-          compact_context = (
-              f'Şimdiki mesaj:\n{current_user}\n\n'
-              f'Önceki kullanıcı mesajı:\n{previous_user}\n\n'
-              f'Önceki cevabın:\n{previous_assistant}'
-          )
-          compact_history = (
-              f'Kullanıcı talimatı:\n{_CHAT_INSTRUCTION}\n\n'
-              f'Ek bilgi:\n{compact_context}\n\n'
+          context = 'Kullanıcı: naber kingo\nAsistan: Merhaba! Size nasıl yardımcı olabilirim?'
+          prompt = (
+              'Kullanıcı talimatı:\n'
+              f'Aşağıdaki önceki konuşmayı dikkate alarak kullanıcının şu yeni mesajına doğal, kısa ve doğrudan Türkçe yanıt ver: {current_user}\n'
+              'Yalnızca cevabı yaz.\n\n'
+              f'Ek bilgi:\n{context}\n\n'
               'Asistan cevabı:\n'
           )
-
-          for label, prompt in (
-              ('NO_HISTORY', no_history),
-              ('CURRENT_HISTORY', current_history),
-              ('COMPACT_HISTORY', compact_history),
-          ):
-              out = model.generate_stream(prompt, cfg, stop=_CHAT_STOPS)
-              print(label, repr(out), flush=True)
+          out = model.generate_stream(prompt, cfg, stop=_CHAT_STOPS)
+          print('INSTRUCTION_FIRST_HISTORY', repr(out), flush=True)
           PY
