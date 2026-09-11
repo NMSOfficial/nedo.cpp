@@ -30,6 +30,38 @@ float dot(const float* a, const float* b, uint32_t n) noexcept {
     return static_cast<float>(s);
 }
 
+void apply_repetition_penalty(std::vector<float>& scores,const std::vector<uint32_t>& sequence,float penalty) {
+    if (penalty==1.f) return;
+    std::unordered_set<uint32_t> seen;
+    seen.reserve(sequence.size());
+    for (uint32_t id:sequence) {
+        if (id>=scores.size() || !seen.insert(id).second) continue;
+        float& score=scores[id];
+        score = score < 0.f ? score*penalty : score/penalty;
+    }
+}
+
+void apply_no_repeat_ngram(std::vector<float>& scores,const std::vector<uint32_t>& sequence,uint32_t ngram_size) {
+    if (!ngram_size || sequence.empty()) return;
+    const float banned=-std::numeric_limits<float>::infinity();
+    if (ngram_size==1) {
+        for (uint32_t id:sequence) if (id<scores.size()) scores[id]=banned;
+        return;
+    }
+    if (sequence.size()+1<ngram_size) return;
+    const size_t prefix_len=static_cast<size_t>(ngram_size-1);
+    const size_t prefix_start=sequence.size()-prefix_len;
+    for (size_t start=0;start+ngram_size<=sequence.size();++start) {
+        bool match=true;
+        for (size_t j=0;j<prefix_len;++j) {
+            if (sequence[start+j]!=sequence[prefix_start+j]) { match=false; break; }
+        }
+        if (!match) continue;
+        const uint32_t banned_id=sequence[start+prefix_len];
+        if (banned_id<scores.size()) scores[banned_id]=banned;
+    }
+}
+
 uint32_t sample_token(const std::vector<float>& logits, const GenerationConfig& gc, std::mt19937_64& rng) {
     if (logits.empty()) throw std::runtime_error("empty logits");
     if (gc.temperature <= 0.f) {
@@ -164,6 +196,8 @@ std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& promp
     if(!cfg_.heads || !cfg_.kv_heads || cfg_.heads%cfg_.kv_heads || cfg_.dim!=cfg_.heads*cfg_.head_dim)
         throw std::runtime_error("invalid GQA dimensions");
     if(!cfg_.context) throw std::runtime_error("context_length is zero");
+    if(!(gc.repetition_penalty>0.f) || !std::isfinite(gc.repetition_penalty))
+        throw std::runtime_error("repetition_penalty must be finite and > 0");
 
     std::vector<uint32_t> tokens=prompt_ids;
     const uint32_t bos=tok_.bos_id().value_or(1u);
@@ -270,10 +304,16 @@ std::vector<uint32_t> NedoModel::generate_ids(const std::vector<uint32_t>& promp
     std::vector<uint32_t> generated;
     generated.reserve(gc.max_new_tokens);
     const uint32_t eos=tok_.eos_id().value_or(2u);
+    std::vector<float> adjusted_logits;
+    adjusted_logits.reserve(cfg_.vocab);
     for(uint32_t n=0;n<gc.max_new_tokens && pos<cfg_.context;++n){
-        const uint32_t next=sample_token(logits,gc,rng);
+        adjusted_logits=logits;
+        apply_repetition_penalty(adjusted_logits,tokens,gc.repetition_penalty);
+        apply_no_repeat_ngram(adjusted_logits,tokens,gc.no_repeat_ngram_size);
+        const uint32_t next=sample_token(adjusted_logits,gc,rng);
         if(next==eos) break;
         generated.push_back(next);
+        tokens.push_back(next);
         if(on_token) on_token(next);
         forward(next,pos++);
     }
