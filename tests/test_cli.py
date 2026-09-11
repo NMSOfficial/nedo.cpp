@@ -5,12 +5,16 @@ def test_first_turn_prompt():
     assert _build_prompt([], "Merhaba") == "Kullanıcı talimatı:\nMerhaba\n\nAsistan cevabı:\n"
 
 
-def test_history_prompt():
+def test_history_uses_optional_input_field():
     p = _build_prompt([("Merhaba", "Selam")], "Nasılsın?")
     assert p == (
-        "Kullanıcı talimatı:\nMerhaba\n\nAsistan cevabı:\nSelam\n\n"
-        "Kullanıcı talimatı:\nNasılsın?\n\nAsistan cevabı:\n"
+        "Kullanıcı talimatı:\nNasılsın?\n\n"
+        "Ek bilgi:\nÖnceki konuşma:\n"
+        "Kullanıcı: Merhaba\nAsistan: Selam\n\n"
+        "Asistan cevabı:\n"
     )
+    assert p.count("Kullanıcı talimatı:") == 1
+    assert p.count("Asistan cevabı:") == 1
 
 
 def test_chat_defaults_to_deterministic_greedy():
