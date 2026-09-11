@@ -14,7 +14,15 @@ struct ModelConfig {
     uint32_t morph_layers=0,morph_shared=0,morph_root=0,morph_suffix=0;
     float rms_eps=1e-5f,rope_theta=10000.f;
 };
-struct GenerationConfig { uint32_t max_new_tokens=128; float temperature=0.8f,top_p=0.95f; uint32_t top_k=40; uint64_t seed=0; bool add_bos=false; };
+struct GenerationConfig {
+    uint32_t max_new_tokens=128;
+    float temperature=0.8f,top_p=0.95f;
+    uint32_t top_k=40;
+    float repetition_penalty=1.0f;
+    uint32_t no_repeat_ngram_size=0;
+    uint64_t seed=0;
+    bool add_bos=false;
+};
 struct SchemaReport { bool architecture_ok=false,standard_tensors_ok=false; uint32_t morph_tensors=0; std::vector<std::string> morph_names,missing,unmatched; std::string router_contract; };
 class NedoModel {
 public:
