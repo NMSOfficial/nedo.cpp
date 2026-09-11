@@ -26,14 +26,18 @@ def test_history_stays_inside_optional_input_and_is_bounded():
 
 def test_chat_defaults_reach_native_generation_config():
     args = build_parser().parse_args(["chat", "Ethosoft/NedoLM-0.8B-SFT-6478-GGUF"])
-    assert args.temperature == 0.0
     assert args.max_tokens == 128
     assert args.device == "auto"
+    assert args.temperature == 0.7
+    assert args.top_p == 0.9
+    assert args.top_k == 0
     assert args.repetition_penalty == 1.15
     assert args.no_repeat_ngram_size == 4
 
     cfg = _generation_config(args)
-    assert cfg.temperature == 0.0
     assert cfg.max_new_tokens == 128
+    assert abs(cfg.temperature - 0.7) < 1e-6
+    assert abs(cfg.top_p - 0.9) < 1e-6
+    assert cfg.top_k == 0
     assert abs(cfg.repetition_penalty - 1.15) < 1e-6
     assert cfg.no_repeat_ngram_size == 4
