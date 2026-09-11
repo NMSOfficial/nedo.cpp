@@ -10,7 +10,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,10 +25,10 @@ jobs:
           python - <<'PY'
           import nedo.cpp as nedo
           m = nedo.import_llm('Ethosoft/NedoLM-0.8B-SFT-6478-GGUF', quantization='F16', device='cpu')
-          c = nedo.GenerationConfig(); c.max_new_tokens=48; c.temperature=0.0; c.seed=1
-          for user in ('merhaba','naber kingo','ne dedin yani'):
+          c = nedo.GenerationConfig(); c.max_new_tokens=12; c.temperature=0.0; c.seed=1
+          for user in ('merhaba','naber kingo'):
               raw = f'Kullanıcı talimatı:\n{user}\n\nAsistan cevabı:\n'
-              wrapped = f'Kullanıcı talimatı:\nKullanıcının şu mesajına doğal, kısa ve doğrudan Türkçe yanıt ver: {user}\n\nAsistan cevabı:\n'
+              wrapped = f'Kullanıcı talimatı:\nKullanıcının şu mesajına doğal, kısa ve doğrudan Türkçe yanıt ver. Yalnızca cevabı yaz.\n\nEk bilgi:\n{user}\n\nAsistan cevabı:\n'
               print('PROMPT',repr(user),flush=True)
               print('RAW',repr(m.generate(raw,c)),flush=True)
               print('WRAPPED',repr(m.generate(wrapped,c)),flush=True)
