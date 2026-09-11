@@ -1,0 +1,31 @@
+name: cuda-compile-a9
+on:
+  push:
+    branches: [cuda-a9]
+    paths:
+      - 'CMakeLists.txt'
+      - 'include/nedo/**'
+      - 'src/**'
+      - '.github/workflows/cuda-compile-a9.yml'
+permissions:
+  contents: read
+jobs:
+  nvcc:
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.8.1-devel-ubuntu24.04
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y git cmake build-essential
+      - uses: actions/checkout@v4
+      - name: CUDA compiler
+        run: nvcc --version
+      - name: Configure CUDA core
+        env:
+          NEDO_CUDA_BUILD: '1'
+        run: cmake -S . -B build -DNEDO_BUILD_PYTHON=OFF -DNEDO_BUILD_TESTS=ON -DNEDO_NATIVE=OFF
+      - name: Build CUDA core
+        run: cmake --build build -j2
+      - name: CPU fallback tests in CUDA build
+        run: ctest --test-dir build --output-on-failure
