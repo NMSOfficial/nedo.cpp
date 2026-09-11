@@ -6,6 +6,7 @@ option(NEDO_BUILD_TESTS "Build tests" ON)
 option(NEDO_NATIVE "Enable -march=native where supported" ON)
 option(NEDO_OPENMP "Enable OpenMP" ON)
 option(NEDO_FAST_MATH "Enable aggressive floating-point reassociation (may affect parity)" OFF)
+option(NEDO_CUDA "Enable CUDA backend when a CUDA compiler is available" ON)
 
 # Portable wheels set NEDO_NATIVE=OFF. Local users can request a host-tuned
 # source build without editing pyproject.toml.
@@ -16,15 +17,47 @@ if(DEFINED ENV{NEDO_FAST_MATH_BUILD} AND NOT "$ENV{NEDO_FAST_MATH_BUILD}" STREQU
   set(NEDO_FAST_MATH ON CACHE BOOL "Enable fast math" FORCE)
 endif()
 
+set(NEDO_CUDA_REQUIRED OFF)
+if(DEFINED ENV{NEDO_CUDA_BUILD})
+  if("$ENV{NEDO_CUDA_BUILD}" STREQUAL "0")
+    set(NEDO_CUDA OFF CACHE BOOL "Enable CUDA backend" FORCE)
+  else()
+    set(NEDO_CUDA ON CACHE BOOL "Enable CUDA backend" FORCE)
+    set(NEDO_CUDA_REQUIRED ON)
+  endif()
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+set(NEDO_CUDA_ENABLED OFF)
+if(NEDO_CUDA)
+  include(CheckLanguage)
+  check_language(CUDA)
+  if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    set(NEDO_CUDA_ENABLED ON)
+    message(STATUS "nedo.cpp CUDA backend: ${CMAKE_CUDA_COMPILER}")
+  elseif(NEDO_CUDA_REQUIRED)
+    message(FATAL_ERROR "NEDO_CUDA_BUILD requested but nvcc/CUDA compiler was not found")
+  else()
+    message(STATUS "nedo.cpp CUDA backend: unavailable; building CPU fallback")
+  endif()
+endif()
+
+set(NEDO_DEVICE_SOURCE src/cuda_stub.cpp)
+if(NEDO_CUDA_ENABLED)
+  set(NEDO_DEVICE_SOURCE src/cuda_backend.cu)
+endif()
 
 add_library(nedo_core
   src/gguf.cpp
   src/kernels.cpp
   src/tokenizer.cpp
   src/model.cpp
+  ${NEDO_DEVICE_SOURCE}
 )
 target_include_directories(nedo_core PUBLIC include)
 
@@ -34,13 +67,19 @@ if(MSVC)
     target_compile_options(nedo_core PRIVATE /arch:AVX2)
   endif()
 else()
-  target_compile_options(nedo_core PRIVATE -O3 -fno-math-errno -fno-trapping-math)
+  target_compile_options(nedo_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3;-fno-math-errno;-fno-trapping-math>)
   if(NEDO_FAST_MATH)
-    target_compile_options(nedo_core PRIVATE -ffast-math)
+    target_compile_options(nedo_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-ffast-math>)
   endif()
   if(NEDO_NATIVE)
-    target_compile_options(nedo_core PRIVATE -march=native)
+    target_compile_options(nedo_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
   endif()
+endif()
+
+if(NEDO_CUDA_ENABLED)
+  target_compile_definitions(nedo_core PUBLIC NEDO_HAS_CUDA=1)
+  target_link_libraries(nedo_core PUBLIC CUDA::cudart)
+  set_target_properties(nedo_core PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON)
 endif()
 
 if(NEDO_OPENMP)
